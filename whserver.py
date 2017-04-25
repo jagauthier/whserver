@@ -42,6 +42,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
         except socket.error:
             pass
         self.rfile.close()
+
     def handle(self):
         try:
             BaseHTTPRequestHandler.handle(self)

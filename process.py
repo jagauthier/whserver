@@ -176,6 +176,7 @@ class ProcessHook():
         self.db_updates_queue.put((Pokestop, pokestop))
         if self.args.webhooks:
             self.wh_updates_queue.put(('pokestop', wh_pokestop))
+
     def process_gym(self, json_data):
         # Increase the # of gyms received, even if it's not stored
         self.gym_total += 1
@@ -261,6 +262,7 @@ class ProcessHook():
         self.db_updates_queue.put((GymMember, gym_members))
         if self.args.webhooks:
             self.wh_updates_queue.put(('gym_details', wh_gymdetails))
+
     def process_post(self, args, db_updates_queue,
                      wh_updates_queue, data_string):
 
