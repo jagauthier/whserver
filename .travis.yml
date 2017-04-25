@@ -5,7 +5,6 @@ python:
 
 install:
   - pip install flake8
-	
 
 script:
   - flake8 --statistics --show-source --disable-noqa
