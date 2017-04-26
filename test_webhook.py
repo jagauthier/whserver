@@ -23,6 +23,7 @@ MINUTES = 3
 
 variance = .20000
 
+UNOWN=201
 
 def get_pokemon():
 
@@ -57,6 +58,9 @@ def get_pokemon():
         'verified': True,
         'weight': random.uniform(5, 15)
     }
+    if pokemon['pokemon_id']==UNOWN:
+        pokemon.update({'form': random.randint(1, 26)})
+    
     return pokemon
 
 
