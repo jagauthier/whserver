@@ -170,8 +170,12 @@ if __name__ == '__main__':
                       help="Location")
 
     parser.add_option("-v", "--variance", dest="variance",
-                      default=.2000,
+                      default=.2000, type="float",
                       help="Location variance")
+
+    parser.add_option("-d", "--delay", dest="delay",
+                      default=.05, type="float",
+                      help="delay between sends")
 
     (options, args) = parser.parse_args()
 
@@ -201,4 +205,4 @@ if __name__ == '__main__':
             process_post('gymdetails', gymdetails, options)
 
         # just a gentle pause
-        time.sleep(.05)
+        time.sleep(options.delay)
