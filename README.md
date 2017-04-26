@@ -11,8 +11,8 @@ First and foremost, RocketMap has contributed a significant amount of
 code to this project.  models.py, webhook.py, utils.py are all taken
 directly from the RM source tree and retrofitted for this project.
 webhook, and all the arguments that go along with is a direct copy
-without any form of modifications. utils.py is basically the same
-thing with different arguments for this projects.  Lastly, models.py
+with very little modifications. utils.py is basically the same with 
+different arguments for this projects.  Lastly, models.py
 uses all of the same database models with substantial code removed 
 that is not needed for this.  I also re-used the database migrator,
 table creation, deletion, directly.  So big ___thanks___ to that team!
