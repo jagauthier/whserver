@@ -1,0 +1,12 @@
+appdirs==1.4.3
+cachetools==2.0.0
+ConfigArgParse==0.11.0
+futures==3.1.1
+packaging==16.8
+peewee==2.9.2
+PyMySQL==0.7.11
+pyparsing==2.2.0
+PyYAML==3.12
+requests==2.13.0
+requests-futures==0.9.7
+six==1.10.0

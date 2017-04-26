@@ -10,11 +10,11 @@ def get_args():
     # config files as well as a missing config.ini.
     defaultconfigfiles = []
     if '-cf' not in sys.argv and '--config' not in sys.argv:
-        defaultconfigfiles = [os.getenv('POGOMAP_CONFIG', os.path.join(
+        defaultconfigfiles = [os.getenv('WHSRV_CONFIG', os.path.join(
             os.path.dirname(__file__), './config/config.ini'))]
     parser = configargparse.ArgParser(
         default_config_files=defaultconfigfiles,
-        auto_env_var_prefix='POGOMAP_')
+        auto_env_var_prefix='WHSRV_')
     parser.add_argument('-cf', '--config',
                         is_config_file=True, help='Set configuration file')
     parser.add_argument('-H', '--host',
