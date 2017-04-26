@@ -111,17 +111,22 @@ class ProcessHook():
         to_keep = ["encounter_id", "spawnpoint_id", "pokemon_id", "latitude",
                    "longitude", "disappear_time", "individual_attack",
                    "individual_defense", "individual_stamina", "move_1",
-                   "move_2", "weight", "height", "gender", "last_modified"]
+                   "move_2", "weight", "height", "gender", "form",
+                   "last_modified"]
         pokemon = {}
         enc = json_data['encounter_id']
         pokemon[enc] = json_data
-
         if pokemon[enc]['pokemon_id'] in self.args.ignore_pokemon:
             self.ignored += 1
             return
 
         # copy this for webhook forwarding
         wh_poke = pokemon[enc].copy()
+
+        # if people are running an older DB version sending wh:
+        if "form" not in pokemon[enc]:
+            pokemon[enc].update({'form': None})
+
         # need to change this from an epoch style type to
         # datetime.dateime for the database insert
         pokemon[enc].update({'disappear_time':

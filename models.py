@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 args = get_args()
 
 # Want to stay compatible with RM's schema
-db_schema_version = 16
+db_schema_version = 17
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -71,6 +71,7 @@ class Pokemon(BaseModel):
     weight = FloatField(null=True)
     height = FloatField(null=True)
     gender = SmallIntegerField(null=True)
+    form = SmallIntegerField(null=True)
     last_modified = DateTimeField(
         null=True, index=True, default=datetime.utcnow)
 
@@ -254,6 +255,8 @@ def bulk_upsert(cls, data, db):
     num_rows = len(data.values())
     i = 0
     step = 250
+    max_fails = 3
+    fails = 0
 
     with db.atomic():
         while i < num_rows:
@@ -281,11 +284,12 @@ def bulk_upsert(cls, data, db):
                 if has_unrecoverable:
                     log.warning('%s. Data is:', repr(e))
                     log.warning(data.items())
-                    print data
-                    print data.values()[i:min(i + step, num_rows)]
                 else:
                     log.warning('%s... Retrying...', repr(e))
                     time.sleep(1)
+                    fails += 1
+                    if fails > max_fails:
+                        return
                     continue
 
             i += step
@@ -345,6 +349,7 @@ def database_migrate(db, old_ver):
     # Perform migrations here.
     migrator = MySQLMigrator(db)
 
-    if (False):
-        migrate(migrator.add_column('pokestop',
-                                    CharField(max_length=50, null=True)))
+    if old_ver < 17:
+        migrate(
+                 migrator.add_column('pokemon', 'form',
+                                     SmallIntegerField(null=True)))
