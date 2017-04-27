@@ -181,6 +181,7 @@ if __name__ == '__main__':
 
     if not options.webhook_url or not options.location:
         print "Webhook url and location are required."
+        parser.print_help()
         exit(0)
 
     start = time.time()
@@ -202,7 +203,7 @@ if __name__ == '__main__':
             gym = get_gym(options)
             gymdetails = get_gymdetails(gym)
             process_post('gym', gym, options)
-            process_post('gymdetails', gymdetails, options)
+            process_post('gym_details', gymdetails, options)
 
         # just a gentle pause
         time.sleep(options.delay)
