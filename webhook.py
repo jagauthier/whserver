@@ -23,6 +23,7 @@ wh_lock = threading.Lock()
 args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
+
 def send_to_webhook(session, message_type, message):
 
     if not args.webhooks:
@@ -48,9 +49,8 @@ def send_to_webhook(session, message_type, message):
 
 
 def wh_updater():
-    
-    
-    max_queue_size=0
+
+    max_queue_size = 0
     wh_threshold_timer = datetime.now()
     wh_over_threshold = False
     # WH updates queue & WH unique key LFU caches.
@@ -125,7 +125,7 @@ def wh_updater():
                 max_queue_size = wh_queue.qsize()
                 if args.runtime_statistics:
                     stats_queue.put(('wh_queue_max', max_queue_size))
-                
+
             # Webhook queue moving too slow.
             if (not wh_over_threshold) and (
                     wh_queue.qsize() > wh_warning_threshold):

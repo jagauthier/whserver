@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import logging
 from threading import Thread
-from utils import get_args
 from models import db, db_updater, create_tables, drop_tables, \
     clean_db_loop, Authorizations, bulk_upsert
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
@@ -9,7 +8,7 @@ import random
 import string
 from sets import Set
 from webhook import wh_updater
-from process import ProcessHook, main_process, Auth, process_stats
+from process import main_process, Auth, process_stats
 import socket
 from utils import get_args, get_queues
 
@@ -21,6 +20,7 @@ log = logging.getLogger()
 
 args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
+
 
 class Server(HTTPServer):
 
@@ -34,6 +34,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
     # http://bugs.python.org/issue14574
     post_fails = 0
     post_success = 0
+
     def finish(self, *args, **kw):
         try:
             if not self.wfile.closed:
@@ -74,6 +75,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 
         # Put it in the process queue
         process_queue.put(data_string)
+
 
 def validate_args():
     if args.clear_db:
@@ -157,7 +159,7 @@ if __name__ == '__main__':
     t = Thread(target=clean_db_loop, name='db-cleaner')
     t.daemon = True
     t.start()
-    
+
     if args.runtime_statistics:
         log.debug("Starting thread for statistics.")
         t = Thread(target=process_stats, name='proc-stats')

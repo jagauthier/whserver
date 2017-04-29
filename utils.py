@@ -3,6 +3,7 @@ import os
 import configargparse
 from queue import Queue
 
+
 def memoize(function):
     memo = {}
 
@@ -101,7 +102,7 @@ def get_args():
                         'singles.', default=1, type=int)
     parser.add_argument('--process-threads',
                         help=('Number of main workers threads; ' +
-                        'increase if the queue falls behind.'),
+                              'increase if the queue falls behind.'),
                         type=int, default=3)
     parser.add_argument('-r', '--revoke', help='Revoke an authorization ' +
                         'token. An identifying string is required.')
