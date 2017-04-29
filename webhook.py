@@ -6,7 +6,7 @@ import requests
 from datetime import datetime
 from requests_futures.sessions import FuturesSession
 import threading
-from utils import get_args
+from utils import get_args, get_queues
 from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 from cachetools import LFUCache
@@ -20,9 +20,10 @@ wh_warning_threshold = 100
 wh_threshold_lifetime = int(5 * (wh_warning_threshold / 100.0))
 wh_lock = threading.Lock()
 
+args = get_args()
+(db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 def send_to_webhook(session, message_type, message):
-    args = get_args()
 
     if not args.webhooks:
         # What are you even doing here...
@@ -46,9 +47,14 @@ def send_to_webhook(session, message_type, message):
             log.exception(repr(e))
 
 
-def wh_updater(args, queue, key_caches):
+def wh_updater():
+    
+    
+    max_queue_size=0
     wh_threshold_timer = datetime.now()
     wh_over_threshold = False
+    # WH updates queue & WH unique key LFU caches.
+    key_caches = {}
 
     # Set up one session to use for all requests.
     # Requests to the same host will reuse the underlying TCP
@@ -73,7 +79,7 @@ def wh_updater(args, queue, key_caches):
     while True:
         try:
             # Loop the queue.
-            whtype, message = queue.get()
+            whtype, message = wh_queue.get()
             # Get the proper cache if this type has one.
             key_cache = None
 
@@ -115,13 +121,18 @@ def wh_updater(args, queue, key_caches):
             del message
             del ident
 
+            if wh_queue.qsize() > max_queue_size:
+                max_queue_size = wh_queue.qsize()
+                if args.runtime_statistics:
+                    stats_queue.put(('wh_queue_max', max_queue_size))
+                
             # Webhook queue moving too slow.
             if (not wh_over_threshold) and (
-                    queue.qsize() > wh_warning_threshold):
+                    wh_queue.qsize() > wh_warning_threshold):
                 wh_over_threshold = True
                 wh_threshold_timer = datetime.now()
             elif wh_over_threshold:
-                if queue.qsize() < wh_warning_threshold:
+                if wh_queue.qsize() < wh_warning_threshold:
                     wh_over_threshold = False
                 else:
                     timediff = datetime.now() - wh_threshold_timer
@@ -132,10 +143,10 @@ def wh_updater(args, queue, key_caches):
                                     + ' try increasing --wh-concurrency'
                                     + ' or --wh-threads.',
                                     wh_warning_threshold,
-                                    queue.qsize(),
+                                    wh_queue.qsize(),
                                     wh_threshold_lifetime)
 
-            queue.task_done()
+            wh_queue.task_done()
         except Exception as e:
             log.exception('Exception in wh_updater: %s.', repr(e))
 

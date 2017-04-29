@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from queue import Queue
 import logging
 from threading import Thread
 from utils import get_args
@@ -10,8 +9,9 @@ import random
 import string
 from sets import Set
 from webhook import wh_updater
-from process import ProcessHook
+from process import ProcessHook, main_process, Auth, process_stats
 import socket
+from utils import get_args, get_queues
 
 logging.basicConfig(
     format='%(asctime)s [%(threadName)12s][%(module)8s][%(levelname)7s] ' +
@@ -19,21 +19,21 @@ logging.basicConfig(
 
 log = logging.getLogger()
 
+args = get_args()
+(db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 class Server(HTTPServer):
 
-    def serve_forever(self, args):
-        self.RequestHandlerClass.args = args
-        self.RequestHandlerClass.PH = ProcessHook(args)
+    def serve_forever(self):
+        self.RequestHandlerClass.auth = Auth()
         HTTPServer.serve_forever(self)
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
-    args = None
-    PH = None
     # Override the default finish() because
     # http://bugs.python.org/issue14574
-
+    post_fails = 0
+    post_success = 0
     def finish(self, *args, **kw):
         try:
             if not self.wfile.closed:
@@ -55,13 +55,13 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         # First check if the path is an accepted value
         # TODO: Implement this
-        if self.PH.auth.validate(self.path) is False:
+        if self.auth.validate(self.path) is False:
             try:
                 self.send_response(404)
                 self.end_headers()
             except:
                 pass
-            self.PH.post_fails += 1
+            self.post_fails += 1
             return
 
         data_string = self.rfile.read(int(self.headers['Content-Length']))
@@ -70,17 +70,12 @@ class HTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
         except:
             pass
-        self.PH.post_success += 1
+        self.post_success += 1
 
-        # Do the rest of the work in a thread
-        t = Thread(target=self.PH.process_post, name='process-post',
-                   args=(self.args, db_updates_queue,
-                         wh_updates_queue, data_string))
-        t.daemon = True
-        t.start()
+        # Put it in the process queue
+        process_queue.put(data_string)
 
-
-def validate_args(args):
+def validate_args():
     if args.clear_db:
         drop_tables(db)
         create_tables(args, db)
@@ -130,8 +125,6 @@ def validate_args(args):
 
 if __name__ == '__main__':
 
-    args = get_args()
-
     # Add file logging if enabled.
     if args.verbose and args.verbose != 'nofile':
         filelog = logging.FileHandler(args.verbose)
@@ -145,42 +138,42 @@ if __name__ == '__main__':
     else:
         log.setLevel(logging.INFO)
 
-    create_tables(args, db)
+    create_tables(db)
     # If we're doing certain things, we'll do them and Then
     # quit
-    validate_args(args)
+    validate_args()
 
-    # DB updates
-    db_updates_queue = Queue()
     # Thread(s) to process database updates.
     # I won't take credit for this. This is straight from RocketMap
     # But if we're getting thrashed with multiple webhook senders
     # Then this seems important, and RM handles this so well
     for i in range(args.db_threads):
         log.debug('Starting db-updater worker thread %d', i)
-        t = Thread(target=db_updater, name='db-updater-{}'.format(i),
-                   args=(args, db_updates_queue, db))
+        t = Thread(target=db_updater, name='db-updater-{}'.format(i))
         t.daemon = True
         t.start()
 
-    # start the db cleaner - doesn't do much here
-    # resets pokestops...
-    t = Thread(target=clean_db_loop, name='db-cleaner', args=(args,))
+    # start the db-cleaner
+    t = Thread(target=clean_db_loop, name='db-cleaner')
     t.daemon = True
     t.start()
-
-    # WH updates queue & WH unique key LFU caches.
-    # The LFU caches will stop the server from resending the same data an
-    # infinite number of times. The caches will be instantiated in the
-    # webhook's startup code.
-    wh_updates_queue = Queue()
-    wh_key_cache = {}
+    
+    if args.runtime_statistics:
+        log.debug("Starting thread for statistics.")
+        t = Thread(target=process_stats, name='proc-stats')
+        t.daemon = True
+        t.start()
 
     # starting web hook server threads
     for i in range(args.wh_threads):
         log.debug('Starting wh-updater worker thread %d', i)
-        t = Thread(target=wh_updater, name='wh-updater-{}'.format(i),
-                   args=(args, wh_updates_queue, wh_key_cache))
+        t = Thread(target=wh_updater, name='wh-updater-{}'.format(i))
+        t.daemon = True
+        t.start()
+
+    for i in range(args.process_threads):
+        log.debug('Starting main process worker thread %d', i)
+        t = Thread(target=main_process, name='process-{}'.format(i))
         t.daemon = True
         t.start()
 
@@ -188,7 +181,7 @@ if __name__ == '__main__':
     httpd = server((args.host, args.port), HTTPHandler)
     log.info("Server Starts - %s:%s", args.host, args.port)
     try:
-        httpd.serve_forever(args)
+        httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     httpd.server_close()

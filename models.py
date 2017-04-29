@@ -10,7 +10,7 @@ from peewee import InsertQuery, FloatField, SmallIntegerField, \
 from datetime import datetime, timedelta
 
 from timeit import default_timer
-from utils import get_args
+from utils import get_args, get_queues
 from playhouse.pool import PooledMySQLDatabase
 from playhouse.shortcuts import RetryOperationalError
 from playhouse.migrate import migrate, MySQLMigrator
@@ -18,6 +18,7 @@ from playhouse.migrate import migrate, MySQLMigrator
 log = logging.getLogger(__name__)
 
 args = get_args()
+(db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 # Want to stay compatible with RM's schema
 db_schema_version = 17
@@ -174,10 +175,12 @@ class Authorizations(BaseModel):
         primary_key = False
 
 
-def db_updater(args, q, db):
+def db_updater():
     # The forever loop.
 
+    max_queue_size = 0
     last_notify = time.time()
+    stat_time = time.time()
     while True:
         try:
 
@@ -192,24 +195,29 @@ def db_updater(args, q, db):
             # Loop the queue.
             while True:
                 last_upsert = default_timer()
-                model, data = q.get()
+                model, data = db_queue.get()
                 bulk_upsert(model, data, db)
-                q.task_done()
+                db_queue.task_done()
                 log.debug('Upserted to %s, %d records (upsert queue '
                           'remaining: %d) in %.2f seconds.',
                           model.__name__,
                           len(data),
-                          q.qsize(),
+                          db_queue.qsize(),
                           default_timer() - last_upsert)
                 del model
                 del data
 
-                if q.qsize() > 50:
+                if db_queue.qsize() > max_queue_size:
+                    max_queue_size = db_queue.qsize()
+                    if args.runtime_statistics:
+                        stats_queue.put(('db_queue_max', max_queue_size))
+                    
+                if db_queue.qsize() > 50:
                     if time.time() > last_notify + 1:
                         log.warning(
                             "DB queue is > 50 (@%d); try increasing " +
                             "--db-threads.",
-                            q.qsize())
+                            db_queue.qsize())
                         last_notify = time.time()
 
         except Exception as e:
@@ -217,7 +225,7 @@ def db_updater(args, q, db):
             time.sleep(5)
 
 
-def clean_db_loop(args):
+def clean_db_loop():
     # pause before starting so it doesn't run at the same time as
     # other interval tasks
     time.sleep(15)
@@ -295,7 +303,7 @@ def bulk_upsert(cls, data, db):
             i += step
 
 
-def create_tables(args, db):
+def create_tables(db):
     verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Versions]

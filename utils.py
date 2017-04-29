@@ -1,8 +1,31 @@
 import sys
 import os
 import configargparse
+from queue import Queue
+
+def memoize(function):
+    memo = {}
+
+    def wrapper(*args):
+        if args in memo:
+            return memo[args]
+        else:
+            rv = function(*args)
+            memo[args] = rv
+            return rv
+    return wrapper
 
 
+@memoize
+def get_queues():
+    db_queue = Queue()
+    wh_queue = Queue()
+    process_queue = Queue()
+    stats_queue = Queue()
+    return (db_queue, wh_queue, process_queue, stats_queue)
+
+
+@memoize
 def get_args():
 
     # Pre-check to see if the -cf or --config flag is used on the command line.
@@ -43,7 +66,7 @@ def get_args():
     parser.add_argument('--db-threads',
                         help=('Number of db threads; increase if the db ' +
                               'queue falls behind.'),
-                        type=int, default=1)
+                        type=int, default=2)
     parser.add_argument('-g', '--generate', help='Generate an authorization ' +
                         'token. An identifying string is required.')
     ignore_list = parser.add_mutually_exclusive_group()
@@ -76,6 +99,10 @@ def get_args():
                         help='Number of pokemon to commit ' +
                         ' to the DB at once. Bulk inserts are faster than ' +
                         'singles.', default=1, type=int)
+    parser.add_argument('--process-threads',
+                        help=('Number of main workers threads; ' +
+                        'increase if the queue falls behind.'),
+                        type=int, default=3)
     parser.add_argument('-r', '--revoke', help='Revoke an authorization ' +
                         'token. An identifying string is required.')
     parser.add_argument('-wh', '--webhook',
