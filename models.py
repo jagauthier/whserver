@@ -21,7 +21,7 @@ args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 # Want to stay compatible with RM's schema
-db_schema_version = 17
+db_schema_version = 18
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -69,6 +69,7 @@ class Pokemon(BaseModel):
     individual_stamina = SmallIntegerField(null=True)
     move_1 = SmallIntegerField(null=True)
     move_2 = SmallIntegerField(null=True)
+    cp = SmallIntegerField(null=True)
     weight = FloatField(null=True)
     height = FloatField(null=True)
     gender = SmallIntegerField(null=True)
@@ -180,7 +181,6 @@ def db_updater():
 
     max_queue_size = 0
     last_notify = time.time()
-    stat_time = time.time()
     while True:
         try:
 
@@ -211,7 +211,7 @@ def db_updater():
                     max_queue_size = db_queue.qsize()
                     if args.runtime_statistics:
                         stats_queue.put(('db_queue_max', max_queue_size))
-                    
+
                 if db_queue.qsize() > 50:
                     if time.time() > last_notify + 1:
                         log.warning(
@@ -359,5 +359,10 @@ def database_migrate(db, old_ver):
 
     if old_ver < 17:
         migrate(
-                 migrator.add_column('pokemon', 'form',
-                                     SmallIntegerField(null=True)))
+            migrator.add_column('pokemon', 'form',
+                                SmallIntegerField(null=True)))
+    if old_ver < 18:
+        migrate(
+            migrator.add_column('pokemon', 'cp',
+                                SmallIntegerField(null=True))
+        )

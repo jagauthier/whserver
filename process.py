@@ -10,8 +10,9 @@ from utils import get_args, get_queues
 
 log = logging.getLogger(__name__)
 
-args=get_args()
+args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
+
 
 class Auth():
     authorizations = {}
@@ -19,7 +20,7 @@ class Auth():
 
     post_success = 0
     post_fail = 0
-    
+
     def __init__(self):
         log.debug("Beginning authorization thread.")
         t = Thread(target=self.load_auth, name='load-auth')
@@ -31,24 +32,25 @@ class Auth():
         while (True):
             query = Authorizations.select(Authorizations.token,
                                           Authorizations.name)
+            print len(query)
             for data in query:
                 self.authorizations[data.token] = data.name
                 if data.token not in self.auth_stats:
                     self.auth_stats[data.token] = 0
-            
+
             if args.runtime_statistics:
                 stats_queue.put(('authorizations', self.authorizations))
                 stats_queue.put(('auth_stats', self.auth_stats))
-                posts = {'success': self.post_success, 
-                         'fail': self.post_fail }
+                posts = {'success': self.post_success,
+                         'fail': self.post_fail}
                 stats_queue.put(('posts', posts))
-                
+
             time.sleep(30)
 
     def validate(self, path):
         if path[1:] not in self.authorizations:
             log.info("404 for %s", path[1:])
-            self.post_fail+=1
+            self.post_fail += 1
             return False
 
         # the keys here are loaded from the database.
@@ -56,93 +58,89 @@ class Auth():
         # so we don't query the database for it upon each connection
         # This will allow us to prevent false insertions
         self.auth_stats[path[1:]] += 1
-        self.post_success+=1
+        self.post_success += 1
         return True
 
 
-
 def process_stats():
-        start_time = time.time()
-        stat_time = start_time
+    start_time = time.time()
+    stat_time = start_time
 
-        post_success = 0
-        post_fails = 0
-        
-        pokemon_total = 0
-        pokestop_total = 0
-        gym_total = 0
-        gym_details = 0
-        ignored = 0
+    pokemon_total = 0
+    pokestop_total = 0
+    gym_total = 0
+    gym_details = 0
+    ignored = 0
 
-        max_stat_queue=0
-        max_db_queue=0
-        max_wh_queue=0
-        max_process_queue=0
-        
-        while (True):
+    max_stat_queue = 0
+    max_db_queue = 0
+    max_wh_queue = 0
+    max_process_queue = 0
+
+    while (True):
             # we're just going to block here until we get data
-            # if the stats don't run on the exact rsi 
+            # if the stats don't run on the exact rsi
             # I don't think it's a big deal
-            
-            stat, data = stats_queue.get()
-            qsize=stats_queue.qsize()
-            if qsize> max_stat_queue:
-                max_stat_queue=qsize
-            if stat == "stats":
-                pokemon_total+=data['pokemon']
-                pokestop_total+=data['pokestops']
-                gym_total+=data['gyms']
-                gym_details+=data['gymdetails']
-                ignored+=data['ignored']
 
-            if stat == "authorizations":
-                auths = data
-                
-            if stat == "auth_stats":
-                auth_stats = data
-             
-            if stat == "posts":
-                post_success=data['success']
-                post_fail=data['fail']
+        stat, data = stats_queue.get()
+        qsize = stats_queue.qsize()
+        if qsize > max_stat_queue:
+            max_stat_queue = qsize
+        if stat == "stats":
+            pokemon_total += data['pokemon']
+            pokestop_total += data['pokestops']
+            gym_total += data['gyms']
+            gym_details += data['gymdetails']
+            ignored += data['ignored']
 
-            if stat == "db_queue_max":
-                max_db_queue = data
-                
-            if stat == "process_queue_max":
-                max_process_queue = data
-                
-            if stat == "wh_queue_max":
-                max_wh_queue = data                
-                
-            stats_queue.task_done()
-            # run the stats
-            if time.time() - stat_time>args.runtime_statistics * 60:
-                stat_time = time.time()
-                log.info("--- Runtime Statistics ---")
-                log.info("Success/Fails: [%i,%i]", post_success,
-                          post_fails)
-                log.info("Pokemon: %i", pokemon_total)
-                log.info("Pokestops %i", pokestop_total)
-                log.info("Gyms: %i", gym_total)
-                log.info("Gym details: %i", gym_details)
-                log.info("Ignored: %i", ignored)
-                log.info("Average requests per minute: %i",
-                         int((post_success + post_fails) /
-                             ((time.time() - start_time) / 60)))
-                log.info("--- Requests by token assignment ---")
+        if stat == "authorizations":
+            auths = data
 
-                for token in auths:
-                    if token in auth_stats:
-                        if auth_stats[token]:
-                            log.info("%s: %i", auths[token], auth_stats[token])
-    
-                log.info("--- Queue Info (Max) ---")
-                log.info("Process: %i", max_process_queue)                
-                log.info("Stats  : %i", max_stat_queue)
-                log.info("DB     : %i", max_db_queue)
-                log.info("WH     : %i", max_wh_queue)
+        if stat == "auth_stats":
+            auth_stats = data
 
-                
+        if stat == "posts":
+            post_success = data['success']
+            post_fails = data['fail']
+
+        if stat == "db_queue_max":
+            max_db_queue = data
+
+        if stat == "process_queue_max":
+            max_process_queue = data
+
+        if stat == "wh_queue_max":
+            max_wh_queue = data
+
+        stats_queue.task_done()
+        # run the stats
+        if time.time() - stat_time > args.runtime_statistics * 60:
+            stat_time = time.time()
+            log.info("--- Runtime Statistics ---")
+            log.info("Success/Fails: [%i,%i]", post_success,
+                     post_fails)
+            log.info("Pokemon: %i", pokemon_total)
+            log.info("Pokestops %i", pokestop_total)
+            log.info("Gyms: %i", gym_total)
+            log.info("Gym details: %i", gym_details)
+            log.info("Ignored: %i", ignored)
+            log.info("Average requests per minute: %i",
+                     int((post_success + post_fails) /
+                         ((time.time() - start_time) / 60)))
+            log.info("--- Requests by token assignment ---")
+
+            for token in auths:
+                if token in auth_stats:
+                    if auth_stats[token]:
+                        log.info("%s: %i", auths[token], auth_stats[token])
+
+            log.info("--- Queue Info (Max) ---")
+            log.info("Process: %i", max_process_queue)
+            log.info("Stats  : %i", max_stat_queue)
+            log.info("DB     : %i", max_db_queue)
+            log.info("WH     : %i", max_wh_queue)
+
+
 class ProcessHook():
 
     # used for bulk imports
@@ -166,17 +164,16 @@ class ProcessHook():
 
     def stats_update(self):
         while (True):
-            stats = { 'pokemon': self.pokemon_total,
-                      'pokestops': self.pokestop_total,
-                      'gyms': self.gym_total,
-                      'gymdetails': self.gym_details,
-                      'ignored': self.ignored
-                      }
+            stats = {'pokemon': self.pokemon_total,
+                     'pokestops': self.pokestop_total,
+                     'gyms': self.gym_total,
+                     'gymdetails': self.gym_details,
+                     'ignored': self.ignored
+                     }
             stats_queue.put(('stats', stats))
-            stat_time=time.time()
             self.reset_stats()
-            time.sleep(random.randint(5,8))
-    
+            time.sleep(random.randint(5, 8))
+
     def process_pokemon(self, json_data):
 
         # Increase the # of pokemon received, even if it's not stored
@@ -190,7 +187,7 @@ class ProcessHook():
         to_keep = ["encounter_id", "spawnpoint_id", "pokemon_id", "latitude",
                    "longitude", "disappear_time", "individual_attack",
                    "individual_defense", "individual_stamina", "move_1",
-                   "move_2", "weight", "height", "gender", "form",
+                   "move_2", "weight", "height", "gender", "form", "cp",
                    "last_modified"]
         pokemon = {}
         enc = json_data['encounter_id']
@@ -204,6 +201,8 @@ class ProcessHook():
 
         # if people are running an older DB version sending wh:
         if "form" not in pokemon[enc]:
+            pokemon[enc].update({'form': None})
+        if "cp" not in pokemon[enc]:
             pokemon[enc].update({'form': None})
 
         # need to change this from an epoch style type to
@@ -262,7 +261,7 @@ class ProcessHook():
             wh_queue.put(('pokestop', wh_pokestop))
 
     def process_gym(self, json_data):
-# Increase the # of gyms received, even if it's not stored
+        # Increase the # of gyms received, even if it's not stored
         self.gym_total += 1
         if args.no_gyms:
             return
@@ -331,12 +330,12 @@ class ProcessHook():
         # we need to extract trainer and pokemon information before
         # getting gymdetails ready for the database
         (gym_pokemon,
-        gym_members,
-        trainers) = self.process_gympokemon(id, gymdetails)
+         gym_members,
+         trainers) = self.process_gympokemon(id, gymdetails)
 
         # copies all the keys we want for the DB
         gymdetails[id] = {key: gymdetails[id][key] for key in gymdetails[id]
-                      if key in to_keep}
+                          if key in to_keep}
 
         log.debug("%s", gymdetails)
         # put it all into the db queue
@@ -363,21 +362,21 @@ class ProcessHook():
             log.warn("Received unhandled webhook type: %s", data_type)
 
     def reset_stats(self):
-        self.pokemon_total=0
-        self.pokestop_total=0
-        self.gyms=0
-        self.gymdetail=0
-        self.ignored=0
-        
+        self.pokemon_total = 0
+        self.pokestop_total = 0
+        self.gyms = 0
+        self.gymdetail = 0
+        self.ignored = 0
+
+
 def main_process():
 
     handled = ["pokemon", "pokestop", "gym", "gym_details"]
 
-    PH=ProcessHook()
-    stat_time = time.time()
-    max_queue_size = 0  
+    PH = ProcessHook()
+    max_queue_size = 0
     while (True):
-        
+
         # if some seconds have passed, throw everything to the stats
         data_string = process_queue.get()
         json_data = yaml.safe_load(data_string)

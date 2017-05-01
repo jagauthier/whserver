@@ -23,10 +23,14 @@ args = get_args()
 
 
 class Server(HTTPServer):
+    request_queue_size = 1024
 
     def serve_forever(self):
         self.RequestHandlerClass.auth = Auth()
         HTTPServer.serve_forever(self)
+
+    def server_activate(self):
+        self.socket.listen(self.request_queue_size)
 
 
 class HTTPHandler(BaseHTTPRequestHandler):
