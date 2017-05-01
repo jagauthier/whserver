@@ -160,7 +160,7 @@ if __name__ == '__main__':
                       help="Iterations to process.")
 
     parser.add_option("-m", "--minutes",
-                      dest="minutes", default=1, type="int",
+                      dest="minutes", type="int",
                       help="Minutes to run.")
 
     parser.add_option("-w", "--webhook", dest="webhook_url",
@@ -185,9 +185,8 @@ if __name__ == '__main__':
         exit(0)
 
     start = time.time()
-    for i in range(0, options.iterations):
-        if time.time() - start > options.minutes * 60:
-            break
+    i = 0
+    while i < options.iterations:
         pokemon = get_pokemon(options)
         process_post('pokemon', pokemon, options)
 
@@ -204,6 +203,13 @@ if __name__ == '__main__':
             gymdetails = get_gymdetails(gym)
             process_post('gym', gym, options)
             process_post('gym_details', gymdetails, options)
+
+        if options.minutes:
+            # reset the iterations, we basically ignore it
+            if time.time() - start > options.minutes * 60:
+                break
+        else:
+            i += 1
 
         # just a gentle pause
         time.sleep(options.delay)
