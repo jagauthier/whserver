@@ -84,7 +84,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
 def validate_args():
     if args.clear_db:
         drop_tables(db)
-        create_tables(args, db)
+        create_tables(db)
         log.info("Drop and create complete.")
         exit(0)
 
