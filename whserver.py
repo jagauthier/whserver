@@ -23,7 +23,7 @@ args = get_args()
 
 
 class Server(HTTPServer):
-    request_queue_size = 1024
+    request_queue_size = 2048
 
     def serve_forever(self):
         self.RequestHandlerClass.auth = Auth()

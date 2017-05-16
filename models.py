@@ -21,7 +21,7 @@ args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 # Want to stay compatible with RM's schema
-db_schema_version = 18
+db_schema_version = 19
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -29,6 +29,14 @@ class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
 
 
 db = None
+
+# Reduction of CharField to fit max length inside 767 bytes for utf8mb4 charset
+
+
+class Utf8mb4CharField(CharField):
+    def __init__(self, max_length=191, *args, **kwargs):
+        self.max_length = max_length
+        super(CharField, self).__init__(*args, **kwargs)
 
 
 def init_database():
@@ -58,8 +66,8 @@ class BaseModel(Model):
 class Pokemon(BaseModel):
     # We are base64 encoding the ids delivered by the api
     # because they are too big for sqlite to handle.
-    encounter_id = CharField(primary_key=True, max_length=50)
-    spawnpoint_id = CharField(index=True)
+    encounter_id = Utf8mb4CharField(primary_key=True, max_length=50)
+    spawnpoint_id = Utf8mb4CharField(index=True)
     pokemon_id = SmallIntegerField(index=True)
     latitude = DoubleField()
     longitude = DoubleField()
@@ -70,6 +78,7 @@ class Pokemon(BaseModel):
     move_1 = SmallIntegerField(null=True)
     move_2 = SmallIntegerField(null=True)
     cp = SmallIntegerField(null=True)
+    cp_multiplier = FloatField(null=True)
     weight = FloatField(null=True)
     height = FloatField(null=True)
     gender = SmallIntegerField(null=True)
@@ -82,13 +91,14 @@ class Pokemon(BaseModel):
 
 
 class Pokestop(BaseModel):
-    pokestop_id = CharField(primary_key=True, max_length=50)
+    pokestop_id = Utf8mb4CharField(primary_key=True, max_length=50)
     enabled = BooleanField()
     latitude = DoubleField()
     longitude = DoubleField()
     last_modified = DateTimeField(index=True)
     lure_expiration = DateTimeField(null=True, index=True)
-    active_fort_modifier = CharField(max_length=50, null=True, index=True)
+    active_fort_modifier = Utf8mb4CharField(
+        max_length=50, null=True, index=True)
     last_updated = DateTimeField(
         null=True, index=True, default=datetime.utcnow)
 
@@ -102,7 +112,7 @@ class Gym(BaseModel):
     TEAM_VALOR = 2
     TEAM_INSTINCT = 3
 
-    gym_id = CharField(primary_key=True, max_length=50)
+    gym_id = Utf8mb4CharField(primary_key=True, max_length=50)
     team_id = SmallIntegerField()
     guard_pokemon_id = SmallIntegerField()
     gym_points = IntegerField()
@@ -117,8 +127,8 @@ class Gym(BaseModel):
 
 
 class GymMember(BaseModel):
-    gym_id = CharField(index=True)
-    pokemon_uid = CharField(index=True)
+    gym_id = Utf8mb4CharField(index=True)
+    pokemon_uid = Utf8mb4CharField(index=True)
     last_scanned = DateTimeField(default=datetime.utcnow, index=True)
 
     class Meta:
@@ -126,10 +136,10 @@ class GymMember(BaseModel):
 
 
 class GymPokemon(BaseModel):
-    pokemon_uid = CharField(primary_key=True, max_length=50)
+    pokemon_uid = Utf8mb4CharField(primary_key=True, max_length=50)
     pokemon_id = SmallIntegerField()
     cp = SmallIntegerField()
-    trainer_name = CharField(index=True)
+    trainer_name = Utf8mb4CharField(index=True)
     num_upgrades = SmallIntegerField(null=True)
     move_1 = SmallIntegerField(null=True)
     move_2 = SmallIntegerField(null=True)
@@ -146,22 +156,22 @@ class GymPokemon(BaseModel):
 
 
 class Trainer(BaseModel):
-    name = CharField(primary_key=True, max_length=50)
+    name = Utf8mb4CharField(primary_key=True, max_length=50)
     team = SmallIntegerField()
     level = SmallIntegerField()
     last_seen = DateTimeField(default=datetime.utcnow)
 
 
 class GymDetails(BaseModel):
-    gym_id = CharField(primary_key=True, max_length=50)
-    name = CharField()
+    gym_id = Utf8mb4CharField(primary_key=True, max_length=50)
+    name = Utf8mb4CharField()
     description = TextField(null=True, default="")
-    url = CharField()
+    url = Utf8mb4CharField()
     last_scanned = DateTimeField(default=datetime.utcnow)
 
 
 class Versions(BaseModel):
-    key = CharField()
+    key = Utf8mb4CharField()
     val = SmallIntegerField()
 
     class Meta:
@@ -169,8 +179,8 @@ class Versions(BaseModel):
 
 
 class Authorizations(BaseModel):
-    token = CharField(primary_key=True, max_length=32)
-    name = CharField(index=True)
+    token = Utf8mb4CharField(primary_key=True, max_length=32)
+    name = Utf8mb4CharField(index=True)
 
     class Meta:
         primary_key = False
@@ -312,6 +322,30 @@ def create_tables(db):
         if not table.table_exists():
             log.info("Creating table: %s", table.__name__)
             db.create_tables([table], safe=True)
+
+    # fixing encoding on present and future tables
+    cmd_sql = '''
+        SELECT table_name FROM information_schema.tables WHERE
+        table_collation != "utf8mb4_unicode_ci" AND table_schema = "%s";
+        ''' % args.db_name
+    change_tables = db.execute_sql(cmd_sql)
+
+    if change_tables.rowcount > 0:
+        log.info('Changing collation and charset on %s tables.',
+                 change_tables.rowcount)
+
+        if change_tables.rowcount == len(tables) + 1:
+            log.info('Changing whole database, this might a take while.')
+
+        with db.atomic():
+            db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
+            for table in change_tables:
+                log.debug('Changing collation and charset on table %s.',
+                          table[0])
+                cmd_sql = '''ALTER TABLE %s CONVERT TO CHARACTER SET utf8mb4
+                            COLLATE utf8mb4_unicode_ci;''' % str(table[0])
+                db.execute_sql(cmd_sql)
+            db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
     db.close()
 
 
@@ -364,5 +398,8 @@ def database_migrate(db, old_ver):
     if old_ver < 18:
         migrate(
             migrator.add_column('pokemon', 'cp',
-                                SmallIntegerField(null=True))
-        )
+                                SmallIntegerField(null=True)))
+    if old_ver < 19:
+        migrate(
+            migrator.add_column('pokemon', 'cp_multiplier',
+                                FloatField(null=True)))
