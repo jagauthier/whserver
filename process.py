@@ -203,7 +203,9 @@ class ProcessHook():
         if "form" not in pokemon[enc]:
             pokemon[enc].update({'form': None})
         if "cp" not in pokemon[enc]:
-            pokemon[enc].update({'form': None})
+            pokemon[enc].update({'cp': None})
+        if "cp_multiplier" not in pokemon[enc]:
+            pokemon[enc].update({'cp_multiplier': None})
 
         # need to change this from an epoch style type to
         # datetime.dateime for the database insert
