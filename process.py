@@ -188,7 +188,7 @@ class ProcessHook():
                    "longitude", "disappear_time", "individual_attack",
                    "individual_defense", "individual_stamina", "move_1",
                    "move_2", "weight", "height", "gender", "form", "cp",
-                   "last_modified"]
+                   "cp_multiplier", "last_modified"]
         pokemon = {}
         enc = json_data['encounter_id']
         pokemon[enc] = json_data
