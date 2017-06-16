@@ -32,7 +32,6 @@ class Auth():
         while (True):
             query = Authorizations.select(Authorizations.token,
                                           Authorizations.name)
-            print len(query)
             for data in query:
                 self.authorizations[data.token] = data.name
                 if data.token not in self.auth_stats:

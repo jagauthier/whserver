@@ -196,7 +196,7 @@ def db_updater():
 
             while True:
                 try:
-                    db.connect()
+                    db.get_conn()
                     break
                 except Exception as e:
                     log.warning('%s... Retrying...', repr(e))
@@ -317,7 +317,7 @@ def create_tables(db):
     verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Versions]
-    db.connect()
+    db.get_conn()
     for table in tables:
         if not table.table_exists():
             log.info("Creating table: %s", table.__name__)
@@ -352,7 +352,7 @@ def create_tables(db):
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Versions]
-    db.connect()
+    db.get_conn()
     db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
     for table in tables:
         if table.table_exists():
