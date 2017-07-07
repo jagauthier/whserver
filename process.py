@@ -460,5 +460,4 @@ def main_process():
             func(json_data['message'])
         else:
             log.warn("Received unhandled webhook type: %s", data_type)
-            print json_data
             # log.debug("%s", json_data)
