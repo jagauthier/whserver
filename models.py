@@ -21,7 +21,7 @@ args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 # Want to stay compatible with RM's schema
-db_schema_version = 19
+db_schema_version = 20
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -115,10 +115,11 @@ class Gym(BaseModel):
     gym_id = Utf8mb4CharField(primary_key=True, max_length=50)
     team_id = SmallIntegerField()
     guard_pokemon_id = SmallIntegerField()
-    gym_points = IntegerField()
+    slots_available = SmallIntegerField()
     enabled = BooleanField()
     latitude = DoubleField()
     longitude = DoubleField()
+    total_cp = SmallIntegerField()
     last_modified = DateTimeField(index=True)
     last_scanned = DateTimeField(default=datetime.utcnow, index=True)
 
@@ -130,6 +131,8 @@ class GymMember(BaseModel):
     gym_id = Utf8mb4CharField(index=True)
     pokemon_uid = Utf8mb4CharField(index=True)
     last_scanned = DateTimeField(default=datetime.utcnow, index=True)
+    deployment_time = DateTimeField()
+    cp_decayed = SmallIntegerField()
 
     class Meta:
         primary_key = False
@@ -184,6 +187,20 @@ class Authorizations(BaseModel):
 
     class Meta:
         primary_key = False
+
+
+class Raid(BaseModel):
+    gym_id = Utf8mb4CharField(primary_key=True, max_length=50)
+    level = IntegerField(index=True)
+    spawn = DateTimeField(index=True)
+    start = DateTimeField(index=True)
+    end = DateTimeField(index=True)
+    pokemon_id = SmallIntegerField(null=True)
+    cp = IntegerField(null=True)
+    move_1 = SmallIntegerField(null=True)
+    move_2 = SmallIntegerField(null=True)
+    last_scanned = DateTimeField(
+        default=datetime.utcnow, index=True)
 
 
 def db_updater():
@@ -316,7 +333,7 @@ def bulk_upsert(cls, data, db):
 def create_tables(db):
     verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
-              GymPokemon, Trainer, Versions]
+              GymPokemon, Trainer, Raid, Versions]
     db.get_conn()
     for table in tables:
         if not table.table_exists():
@@ -351,7 +368,7 @@ def create_tables(db):
 
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,
-              GymPokemon, Trainer, Versions]
+              GymPokemon, Trainer, Raid, Versions]
     db.get_conn()
     db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
     for table in tables:
@@ -403,3 +420,15 @@ def database_migrate(db, old_ver):
         migrate(
             migrator.add_column('pokemon', 'cp_multiplier',
                                 FloatField(null=True)))
+    if old_ver < 20:
+        migrate(
+            migrator.drop_column('gym', 'gym_points'),
+            migrator.add_column('gym', 'slots_available',
+                                SmallIntegerField(null=False, default=0)),
+            migrator.add_column('gymmember', 'cp_decayed',
+                                SmallIntegerField(null=False, default=0)),
+            migrator.add_column('gymmember', 'deployment_time',
+                                DateTimeField(
+                                    null=False, default=datetime.utcnow())),
+            migrator.add_column('gym', 'total_cp',
+                                SmallIntegerField(null=False, default=0)))

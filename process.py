@@ -4,14 +4,39 @@ import logging
 import yaml
 from base64 import b64decode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
-    Trainer, GymPokemon, GymMember, Authorizations
+    Trainer, GymPokemon, GymMember, Authorizations, Raid
 from threading import Thread
 from utils import get_args, get_queues
+
+import pprint
 
 log = logging.getLogger(__name__)
 
 args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
+
+# cp_multiplier look up. PGScout is sending only the level now
+
+cpm = ({1: 0.094, 1.5: 0.135137432, 2: 0.16639787, 2.5: 0.192650919,
+        3: 0.21573247, 3.5: 0.236572661, 4: 0.25572005, 4.5: 0.273530381,
+        5: 0.29024988, 5.5: 0.306057377, 6: 0.3210876, 6.5: 0.335445036,
+        7: 0.34921268, 7.5: 0.362457751, 8: 0.37523559, 8.5: 0.387592406,
+        9: 0.39956728, 9.5: 0.411193551, 10: 0.42250001, 10.5: 0.432926419,
+        11: 0.44310755, 11.5: 0.453059958, 12: 0.46279839, 12.5: 0.472336083,
+        13: 0.48168495, 13.5: 0.4908558, 14: 0.49985844, 14.5: 0.508701765,
+        15: 0.51739395, 15.5: 0.525942511, 16: 0.53435433, 16.5: 0.542635767,
+        17: 0.55079269, 17.5: 0.558830576, 18: 0.56675452, 18.5: 0.574569153,
+        19: 0.58227891, 19.5: 0.589887917, 20: 0.59740001, 20.5: 0.604818814,
+        21: 0.61215729, 21.5: 0.619399365, 22: 0.62656713, 22.5: 0.633644533,
+        23: 0.64065295, 23.5: 0.647576426, 24: 0.65443563, 24.5: 0.661214806,
+        25: 0.667934, 25.5: 0.674577537, 26: 0.68116492, 26.5: 0.687680648,
+        27: 0.69414365, 27.5: 0.700538673, 28: 0.70688421, 28.5: 0.713164996,
+        29: 0.71939909, 29.5: 0.725571552, 30: 0.7317, 30.5: 0.734741009,
+        31: 0.73776948, 31.5: 0.740785574, 32: 0.74378943, 32.5: 0.746781211,
+        33: 0.74976104, 33.5: 0.752729087, 34: 0.75568551, 34.5: 0.758630378,
+        35: 0.76156384, 35.5: 0.764486065, 36: 0.76739717, 36.5: 0.770297266,
+        37: 0.7731865, 37.5: 0.776064962, 38: 0.77893275, 38.5: 0.781790055,
+        39: 0.78463697, 39.5: 0.787473578, 40: 0.79030001})
 
 
 class Auth():
@@ -48,7 +73,7 @@ class Auth():
 
     def validate(self, path):
         if path[1:] not in self.authorizations:
-            log.info("404 for %s", path[1:])
+            log.info("404 for '%s'", path[1:])
             self.post_fail += 1
             return False
 
@@ -70,6 +95,7 @@ def process_stats():
     gym_total = 0
     gym_details = 0
     ignored = 0
+    raid_total = 0
 
     max_stat_queue = 0
     max_db_queue = 0
@@ -91,6 +117,7 @@ def process_stats():
             gym_total += data['gyms']
             gym_details += data['gymdetails']
             ignored += data['ignored']
+            raid_total += data['raids']
 
         if stat == "authorizations":
             auths = data
@@ -122,6 +149,7 @@ def process_stats():
             log.info("Pokestops %i", pokestop_total)
             log.info("Gyms: %i", gym_total)
             log.info("Gym details: %i", gym_details)
+            log.info("Raids: %i", raid_total)
             log.info("Ignored: %i", ignored)
             log.info("Average requests per minute: %i",
                      int((post_success + post_fails) /
@@ -152,6 +180,7 @@ class ProcessHook():
     gym_total = 0
     gym_details = 0
     ignored = 0
+    raid_total = 0
     # to hold multiple pokemon for bulk insertions
     pokemon_list = {}
 
@@ -167,6 +196,7 @@ class ProcessHook():
                      'pokestops': self.pokestop_total,
                      'gyms': self.gym_total,
                      'gymdetails': self.gym_details,
+                     'raids': self.raid_total,
                      'ignored': self.ignored
                      }
             stats_queue.put(('stats', stats))
@@ -197,6 +227,12 @@ class ProcessHook():
 
         # copy this for webhook forwarding
         wh_poke = pokemon[enc].copy()
+
+        # pgscout/monocle hack for level/cpm
+        if "level" in pokemon[enc]:
+            log.info("Got a level: %i. CPM: %f",
+                     pokemon[enc]['level'], cpm[pokemon[enc]['level']])
+            pokemon[enc].update({'cp_multiplier': cpm[pokemon[enc]['level']]})
 
         # if people are running an older DB version sending wh:
         if "form" not in pokemon[enc]:
@@ -240,6 +276,7 @@ class ProcessHook():
         pokestop = {}
         id = json_data['pokestop_id']
         pokestop[id] = json_data
+        # copy this for webhook forwarding
         wh_pokestop = pokestop[id].copy()
         # last_modified is DB, last_modified_time is WH
         # and decode the id back
@@ -254,7 +291,7 @@ class ProcessHook():
         # copies all the keys we want for the DB
         pokestop[id] = {key: pokestop[id][key]
                         for key in pokestop[id] if key in to_keep}
-        # copy this for webhook forwarding
+
         log.debug("%s", pokestop)
         # put it into the db queue
         db_queue.put((Pokestop, pokestop))
@@ -267,8 +304,9 @@ class ProcessHook():
         if args.no_gyms:
             return
 
-        to_keep = ["gym_id", "team_id", "guard_pokemon_id", "gym_points",
-                   "enabled", "latitude", "longitude", "last_modified"]
+        to_keep = ["gym_id", "team_id", "guard_pokemon_id",
+                   "slots_available", "enabled", "latitude", "longitude",
+                   "total_cp", "last_modified"]
 
         gym = {}
         id = json_data['gym_id']
@@ -281,8 +319,10 @@ class ProcessHook():
         gym[id].update({'last_modified':
                         time.gmtime(gym[id]['last_modified'] / 1000),
                         'gym_id': b64decode(gym[id]['gym_id'])})
+
         # copies all the keys we want for the DB
         gym[id] = {key: gym[id][key] for key in gym[id] if key in to_keep}
+
         log.debug("%s", gym)
         # put it into the db queue
         db_queue.put((Gym, gym))
@@ -298,14 +338,23 @@ class ProcessHook():
         gym_pokemon = {}
         gym_members = {}
         trainers = {}
+        pprint.pformat(gymdetails)
         for pokemon in gymdetails[id]['pokemon']:
+
             trainers[pokemon['trainer_name']] = {
                 'name': pokemon['trainer_name'],
                 'team': gymdetails[id]['team'],
                 'level': pokemon['trainer_level']}
             p_uid = pokemon['pokemon_uid']
+
+            if 'deployment_time' not in pokemon:
+                pokemon['deployment_time'] = time.gmtime(time.time())
+
             gym_members[p_uid] = {'gym_id': gymdetails[id]['gym_id'],
-                                  'pokemon_uid': p_uid}
+                                  'pokemon_uid': p_uid,
+                                  'cp_decayed': pokemon['cp_decayed'],
+                                  'deployment_time':
+                                      pokemon['deployment_time']}
             gym_pokemon[p_uid] = pokemon
             gym_pokemon[p_uid] = {key: gym_pokemon[p_uid][key]
                                   for key in gym_pokemon[p_uid]
@@ -347,20 +396,35 @@ class ProcessHook():
         if args.webhooks:
             wh_queue.put(('gym_details', wh_gymdetails))
 
-    def process_post(self, data_string):
+    def process_raid(self, json_data):
+        # Increase the # of pokestops received, even if it's not stored
+        self.raid_total += 1
 
-        handled = ["pokemon", "pokestop", "gym", "gym_details"]
+        if args.no_raids:
+            return
 
-        self.pokemon_iteration = args.pokemon_inserts
-        json_data = yaml.safe_load(data_string)
-        data_type = json_data['type']
+        to_keep = ["pokemon_id", "spawn", "move_1", "move_2", "end",
+                   "level", "gym_id", "start", "cp"]
 
-        if data_type in handled:
-            log.debug("Processing: %s", data_type)
-            func = getattr(self, "process_" + data_type)
-            func(json_data['message'])
-        else:
-            log.warn("Received unhandled webhook type: %s", data_type)
+        raid = {}
+        id = json_data['gym_id']
+        raid[id] = json_data
+        # copy this for webhook forwarding
+        wh_raid = raid[id].copy()
+        # decode the id back
+        raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
+                         'spawn': time.gmtime(raid[id]['spawn']),
+                         'start': time.gmtime(raid[id]['start']),
+                         'end': time.gmtime(raid[id]['end'])})
+        # copies all the keys we want for the DB
+        raid[id] = {key: raid[id][key]
+                    for key in raid[id] if key in to_keep}
+
+        log.debug("%s", raid)
+        # put it into the db queue
+        db_queue.put((Raid, raid))
+        if args.webhooks:
+            wh_queue.put(('raid', wh_raid))
 
     def reset_stats(self):
         self.pokemon_total = 0
@@ -368,11 +432,12 @@ class ProcessHook():
         self.gyms = 0
         self.gymdetail = 0
         self.ignored = 0
+        self.raid_total = 0
 
 
 def main_process():
 
-    handled = ["pokemon", "pokestop", "gym", "gym_details"]
+    handled = ["pokemon", "pokestop", "gym", "gym_details", "raid"]
 
     PH = ProcessHook()
     max_queue_size = 0
@@ -389,11 +454,11 @@ def main_process():
                 stats_queue.put(('process_queue_max', max_queue_size))
 
         data_type = json_data['type']
-
         if data_type in handled:
             log.debug("Processing: %s", data_type)
             func = getattr(PH, "process_" + data_type)
             func(json_data['message'])
         else:
             log.warn("Received unhandled webhook type: %s", data_type)
+            print json_data
             # log.debug("%s", json_data)

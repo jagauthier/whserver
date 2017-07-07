@@ -89,6 +89,9 @@ def get_args():
     parser.add_argument('-ngd', '--no-gymdetail',
                         help='Gym detail will not be stored in the database.',
                         action='store_true', default=False)
+    parser.add_argument('-nr', '--no-raids',
+                        help='Raids will not be stored in the database.',
+                        action='store_true', default=False)
     parser.add_argument('-rs', '--runtime-statistics',
                         help='Display usage statistics. Specified in ' +
                         'minutes', type=int, default=0)
