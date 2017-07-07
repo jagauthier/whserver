@@ -197,9 +197,15 @@ def __get_key_fields(whtype):
                     'disappear_time', 'move_1', 'move_2',
                     'individual_stamina', 'individual_defense',
                     'individual_attack', 'form', 'cp', 'pokemon_level'],
-        'gym': ['team_id', 'guard_pokemon_id',
-                'gym_points', 'enabled', 'latitude', 'longitude'],
-        'gym_details': ['latitude', 'longitude', 'team', 'pokemon']
+        'gym': [
+            'team_id', 'guard_pokemon_id', 'enabled', 'latitude', 'longitude',
+            'raid_active_until', 'occupied_since_ms', 'total_cp',
+            'lowest_pokemon_motivation', 'slots_available'],
+        'gym_details': ['latitude', 'longitude', 'team', 'pokemon'],
+        'raid': [
+            'spawn', 'start', 'end', 'pokemon_id', 'latitude', 'longitude'
+        ]
+
 
     }
 
