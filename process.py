@@ -2,13 +2,11 @@ import time
 import random
 import logging
 import yaml
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
     Trainer, GymPokemon, GymMember, Authorizations, Raid
 from threading import Thread
 from utils import get_args, get_queues
-
-import pprint
 
 log = logging.getLogger(__name__)
 
@@ -338,7 +336,6 @@ class ProcessHook():
         gym_pokemon = {}
         gym_members = {}
         trainers = {}
-        pprint.pformat(gymdetails)
         for pokemon in gymdetails[id]['pokemon']:
 
             trainers[pokemon['trainer_name']] = {
@@ -348,13 +345,13 @@ class ProcessHook():
             p_uid = pokemon['pokemon_uid']
 
             if 'deployment_time' not in pokemon:
-                pokemon['deployment_time'] = time.gmtime(time.time())
+                pokemon['deployment_time'] = time.gmtime(time.time() * 1000)
 
             gym_members[p_uid] = {'gym_id': gymdetails[id]['gym_id'],
                                   'pokemon_uid': p_uid,
                                   'cp_decayed': pokemon['cp_decayed'],
                                   'deployment_time':
-                                      pokemon['deployment_time']}
+                                      time.gmtime(pokemon['deployment_time'])}
             gym_pokemon[p_uid] = pokemon
             gym_pokemon[p_uid] = {key: gym_pokemon[p_uid][key]
                                   for key in gym_pokemon[p_uid]
@@ -407,10 +404,51 @@ class ProcessHook():
                    "level", "gym_id", "start", "cp"]
 
         raid = {}
-        id = json_data['gym_id']
-        raid[id] = json_data
-        # copy this for webhook forwarding
-        wh_raid = raid[id].copy()
+
+        # Not RM data coming in...
+        if 'raid_seed' in json_data:
+            # copy for wh forwarding
+
+            id = json_data['raid_seed']
+            raid[id] = json_data
+            wh_raid = raid[id].copy()
+
+            raid[id]['gym_id'] = b64encode(str(time.time()))
+            raid[id]['spawn'] = raid[id]['start'] - 7200
+
+            # if we're getting 0, they need to be set to None
+            if raid[id]['cp'] == 0:
+                raid[id].update({'cp': None,
+                                 'pokemon_id': None,
+                                 'move_1': None,
+                                 'move_2': None})
+
+            # let's see if we are getting gyms from RM by locating the gym via
+            # lat and lon.
+            try:
+                gym_id = Gym.get(Gym.latitude == json_data['latitude'],
+                                 Gym.longitude == json_data['longitude'])
+            except:
+                # throws an exception if the record cannot be found
+                gym_id = None
+
+            if gym_id is None:
+                log.info("No gym found. Artifically adding one.")
+                gym = {'gym_id': raid[id]['gym_id'], 'team_id': 0,
+                       'guard_pokemon_id': 0, 'slots_available': 6,
+                       'enabled': 1, 'latitude': raid[id]['latitude'],
+                       'longitude': raid[id]['longitude'], 'total_cp': 0,
+                       'last_modified': time.time() * 1000}
+                self.process_gym(gym)
+            else:
+                log.info("Gym found.")
+                json_data['gym_id'] = b64encode(gym_id.gym_id)
+        else:
+            # standard RM wh
+            id = json_data['gym_id']
+            raid[id] = json_data
+            wh_raid = raid[id].copy()
+
         # decode the id back
         raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
                          'spawn': time.gmtime(raid[id]['spawn']),
@@ -452,12 +490,14 @@ def main_process():
             max_queue_size = process_queue.qsize()
             if args.runtime_statistics:
                 stats_queue.put(('process_queue_max', max_queue_size))
+        records = len(json_data)
 
-        data_type = json_data['type']
-        if data_type in handled:
-            log.debug("Processing: %s", data_type)
-            func = getattr(PH, "process_" + data_type)
-            func(json_data['message'])
-        else:
-            log.warn("Received unhandled webhook type: %s", data_type)
+        for x in range(0, records):
+            data_type = json_data[x]['type']
+            if data_type in handled:
+                log.debug("Processing: %s", data_type)
+                func = getattr(PH, "process_" + data_type)
+                func(json_data[x]['message'])
+            else:
+                log.warn("Received unhandled webhook type: %s", data_type)
             # log.debug("%s", json_data)
