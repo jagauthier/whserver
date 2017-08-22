@@ -74,6 +74,7 @@ def wh_updater():
     frame_interval_sec = (args.wh_frame_interval / 1000)
     frame_first_message_time_sec = default_timer()
     frame_messages = []
+    first_message = True
 
     # How low do we want the queue size to stay?
     wh_warning_threshold = 100
