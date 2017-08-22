@@ -136,8 +136,9 @@ def wh_updater():
             now = default_timer()
             num_messages = len(frame_messages)
 
-            if num_messages == 1:
+            if num_messages == 1 and first_message:
                 frame_first_message_time_sec = now
+                first_message = False
 
             # If enough time has passed, send the message frame.
             time_passed_sec = now - frame_first_message_time_sec
@@ -150,6 +151,7 @@ def wh_updater():
                 send_to_webhooks(args, session, frame_messages)
 
                 frame_messages = []
+                first_message = True
 
             if wh_queue.qsize() > max_queue_size:
                 max_queue_size = wh_queue.qsize()
