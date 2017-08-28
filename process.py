@@ -227,7 +227,7 @@ class ProcessHook():
         wh_poke = pokemon[enc].copy()
 
         # pgscout/monocle hack for level/cpm
-        if "level" in pokemon[enc]:
+        if "level" in pokemon[enc] and pokemon[enc]['level'] is not None:
             log.info("Got a level: %i. CPM: %f",
                      pokemon[enc]['level'], cpm[pokemon[enc]['level']])
             pokemon[enc].update({'cp_multiplier': cpm[pokemon[enc]['level']]})
@@ -490,14 +490,40 @@ def main_process():
             max_queue_size = process_queue.qsize()
             if args.runtime_statistics:
                 stats_queue.put(('process_queue_max', max_queue_size))
-        records = len(json_data)
 
-        for x in range(0, records):
-            data_type = json_data[x]['type']
-            if data_type in handled:
-                log.debug("Processing: %s", data_type)
-                func = getattr(PH, "process_" + data_type)
-                func(json_data[x]['message'])
-            else:
-                log.warn("Received unhandled webhook type: %s", data_type)
+        try:
+            # Older wh types
+            if isinstance(json_data, dict):
+                for record in json_data:
+                    if record == 'type':
+                        data_type = json_data[record]
+                    if record == 'message':
+                        message = json_data[record]
+
+                if data_type and message:
+                    if data_type in handled:
+                        log.debug("Processing: %s", data_type)
+                        func = getattr(PH, "process_" + data_type)
+                        func(message)
+                    else:
+                        log.warn("Received unhandled webhook type: %s",
+                                 data_type)
+                    data_type = None
+                    message = None
+            # RM types
+
+            if isinstance(json_data, list):
+                for record in json_data:
+                    data_type = record['type']
+                    message = record['message']
+
+                    if data_type in handled:
+                        log.debug("Processing: %s", data_type)
+                        func = getattr(PH, "process_" + data_type)
+                        func(message)
+                    else:
+                        log.warn("Received unhandled webhook type: %s",
+                                 data_type)
             # log.debug("%s", json_data)
+        except:
+            raise
