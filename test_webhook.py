@@ -94,10 +94,16 @@ def get_gymdetails(gym):
     }
 
     gym_pokes = []
-    for i in range(1, 10):
+    pokes = range(1, 6)
+    gym['slots_available'] = 6 - len(pokes)
+    total_cp = 0
+    for i in range(1, len(pokes)):
+        cp = random.randint(500, 3000)
+        total_cp += cp
         gym_pokes.append(
             {'additional_cp_multiplier': random.random(),
-             'cp': random.randint(500, 3000),
+             'cp': cp,
+             'cp_decayed': int(random.randint(400, cp)),
              'cp_multiplier': random.random(),
              'height': random.random(),
              'iv_attack': random.randint(0, 15),
@@ -112,9 +118,10 @@ def get_gymdetails(gym):
              'stamina_max': random.randint(1, 281),
              'trainer_level': random.randint(1, 40),
              'pokemon_uid': random.randint(10000, 20000),
-             'trainer_name': random.choice(trainer_names)
+             'trainer_name': random.choice(trainer_names),
+             'deployment_time': int(time.time() + random.randint(-3600, 0))
              })
-
+    gym['total_cp'] = total_cp
     gymdetails.update({'pokemon': gym_pokes})
     return gymdetails
 

@@ -62,7 +62,8 @@ def wh_updater():
         'pokestop': 'pokestop_id',
         'pokemon': 'encounter_id',
         'gym': 'gym_id',
-        'gym_details': 'gym_id'
+        'gym_details': 'id',
+        'raid': 'gym_id'
     }
 
     # Instantiate WH LFU caches for all cached types. We separate the caches
@@ -131,7 +132,7 @@ def wh_updater():
                             log.debug('Queued updated %s to webhook: %s.',
                                       whtype, ident)
                         else:
-                            log.debug('Not queing %s to webhook: %s.',
+                            log.debug('Not queuing %s to webhook: %s.',
                                       whtype, ident)
                 wh_queue.task_done()
             # Store the time when we added the first message instead of the
@@ -190,8 +191,9 @@ def wh_updater():
 
 # Background handler for completed webhook requests.
 # Currently doesn't do anything.
-def __wh_completed():
-    pass
+def __wh_completed(sess, resp):
+    # Instantly close the response to release the connection back to the pool.
+    resp.close()
 
 
 def __get_requests_session(args):

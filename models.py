@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import pprint
 import time
 import sys
 from peewee import InsertQuery, FloatField, SmallIntegerField, \
@@ -321,6 +322,7 @@ def bulk_upsert(cls, data, db):
                     log.warning(data.items())
                 else:
                     log.warning('%s... Retrying...', repr(e))
+                    log.warning('%s', pprint.pformat(data))
                     time.sleep(1)
                     fails += 1
                     if fails > max_fails:

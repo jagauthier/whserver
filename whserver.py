@@ -60,6 +60,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         # First check if the path is an accepted value
         # TODO: Implement this
+
         if self.auth.validate(self.path) is False:
             try:
                 self.send_response(404)

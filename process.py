@@ -2,6 +2,7 @@ import time
 import random
 import logging
 import yaml
+from peewee import DeleteQuery
 from base64 import b64decode, b64encode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
     Trainer, GymPokemon, GymMember, Authorizations, Raid
@@ -280,7 +281,8 @@ class ProcessHook():
         # and decode the id back
         if pokestop[id]['lure_expiration'] is not None:
             pokestop[id].update({'lure_expiration':
-                                 time.gmtime(pokestop[id]['lure_expiration'])})
+                                 time.gmtime(pokestop[id]['lure_expiration']
+                                             / 1000)})
         pokestop[id].update({'last_modified':
                              time.gmtime(
                                  pokestop[id]['last_modified_time'] / 1000),
@@ -367,7 +369,7 @@ class ProcessHook():
         to_keep = ["gym_id", "name", "description", "url"]
 
         gymdetails = {}
-        id = json_data['id']
+        id = b64decode(json_data['id'])
         gymdetails[id] = json_data
         # copy this for webhook forwarding
         wh_gymdetails = gymdetails[id].copy()
@@ -389,7 +391,13 @@ class ProcessHook():
         db_queue.put((GymDetails, gymdetails))
         db_queue.put((Trainer, trainers))
         db_queue.put((GymPokemon, gym_pokemon))
+
+        # Need to delete gym members
+        DeleteQuery(GymMember).where(
+            GymMember.gym_id << gymdetails.keys()).execute()
+
         db_queue.put((GymMember, gym_members))
+
         if args.webhooks:
             wh_queue.put(('gym_details', wh_gymdetails))
 
@@ -480,7 +488,6 @@ def main_process():
     PH = ProcessHook()
     max_queue_size = 0
     while (True):
-
         # if some seconds have passed, throw everything to the stats
         data_string = process_queue.get()
         json_data = yaml.safe_load(data_string)
