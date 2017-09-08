@@ -475,8 +475,8 @@ class ProcessHook():
     def reset_stats(self):
         self.pokemon_total = 0
         self.pokestop_total = 0
-        self.gyms = 0
-        self.gymdetail = 0
+        self.gym_total = 0
+        self.gym_details = 0
         self.ignored = 0
         self.raid_total = 0
 
