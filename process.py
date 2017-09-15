@@ -2,6 +2,12 @@ import time
 import random
 import logging
 import yaml
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
+
+import timeit
 from peewee import DeleteQuery
 from base64 import b64decode, b64encode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
@@ -488,9 +494,12 @@ def main_process():
     PH = ProcessHook()
     max_queue_size = 0
     while (True):
-        # if some seconds have passed, throw everything to the stats
+
         data_string = process_queue.get()
-        json_data = yaml.safe_load(data_string)
+        start = timeit.default_timer()
+        json_data = yaml.load(data_string, Loader=Loader)
+        elapsed = timeit.default_timer() - start
+        log.debug("YAML loaded in %.2fs.", elapsed)
         process_queue.task_done()
 
         if process_queue.qsize() > max_queue_size:
@@ -518,9 +527,10 @@ def main_process():
                     data_type = None
                     message = None
             # RM types
-
-            if isinstance(json_data, list):
+            elif isinstance(json_data, list):
+                records = 0
                 for record in json_data:
+                    records += 1
                     data_type = record['type']
                     message = record['message']
 
@@ -531,6 +541,10 @@ def main_process():
                     else:
                         log.warn("Received unhandled webhook type: %s",
                                  data_type)
+                log.debug("Received %i records.", records)
+            else:
+                log.warn("Got an unexpected data type.")
             # log.debug("%s", json_data)
+
         except:
             raise

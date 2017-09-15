@@ -60,7 +60,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         # First check if the path is an accepted value
         # TODO: Implement this
-
         if self.auth.validate(self.path) is False:
             try:
                 self.send_response(404)
@@ -77,7 +76,6 @@ class HTTPHandler(BaseHTTPRequestHandler):
         except:
             pass
         self.post_success += 1
-
         # Put it in the process queue
         process_queue.put(data_string)
 
