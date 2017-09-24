@@ -419,8 +419,14 @@ class ProcessHook():
 
         raid = {}
 
-        # Not RM data coming in...
-        if 'raid_seed' in json_data:
+        # Assume RocketMap
+        if 'gym_id' in json_data:
+            # standard RM wh
+            id = json_data['gym_id']
+            raid[id] = json_data
+            wh_raid = raid[id].copy()
+
+        elif 'raid_seed' in json_data:
             # copy for wh forwarding
 
             id = json_data['raid_seed']
@@ -457,11 +463,6 @@ class ProcessHook():
             else:
                 log.info("Gym found.")
                 json_data['gym_id'] = b64encode(gym_id.gym_id)
-        else:
-            # standard RM wh
-            id = json_data['gym_id']
-            raid[id] = json_data
-            wh_raid = raid[id].copy()
 
         # decode the id back
         raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
