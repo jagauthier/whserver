@@ -425,6 +425,8 @@ class ProcessHook():
             id = json_data['gym_id']
             raid[id] = json_data
             wh_raid = raid[id].copy()
+            # always set spawn time
+            raid[id]['spawn'] = raid[id]['start'] - 3600
 
         elif 'raid_seed' in json_data:
             # copy for wh forwarding
@@ -434,7 +436,7 @@ class ProcessHook():
             wh_raid = raid[id].copy()
 
             raid[id]['gym_id'] = b64encode(str(time.time()))
-            raid[id]['spawn'] = raid[id]['start'] - 7200
+            raid[id]['spawn'] = raid[id]['start'] - 3600
 
             # if we're getting 0, they need to be set to None
             if raid[id]['cp'] == 0:
