@@ -428,6 +428,28 @@ class ProcessHook():
             # always set spawn time
             raid[id]['spawn'] = raid[id]['start'] - 3600
 
+            # team_id in a raid hook means the gym info is coming with the raid
+            # some moncle forks are doing this because monocle doesn't send
+            # gym webhooks
+            if 'team_id' in json_data:
+                gym = {}
+                gym = {'gym_id': json_data['gym_id'],
+                                            'team_id': json_data['team_id'],
+                                           'latitude': json_data['latitude'],
+                                           'longitude': json_data['longitude'],
+                                           'guard_pokemon_id': 1,
+                                           'slots_available': 0,
+                                           'enabled': True,
+                                           'total_cp': 0,
+                                           'last_modified': int(time.time())}
+                gymdetails={}
+                gymdetails = {'id': json_data['gym_id'],
+                                           'name': json_data['name'],
+                                           'description': ' ',
+                                           'url': json_data['gym_url'],
+                                           'pokemon': []}
+                self.process_gym(gym)
+                self.process_gym_details(gymdetails)
         elif 'raid_seed' in json_data:
             # copy for wh forwarding
 
