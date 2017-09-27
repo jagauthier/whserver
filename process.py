@@ -235,9 +235,17 @@ class ProcessHook():
 
         # pgscout/monocle hack for level/cpm
         if "level" in pokemon[enc] and pokemon[enc]['level'] is not None:
-            log.info("Got a level: %i. CPM: %f",
-                     pokemon[enc]['level'], cpm[pokemon[enc]['level']])
+            log.denug("Got a level: %i. CPM: %f",
+                      pokemon[enc]['level'], cpm[pokemon[enc]['level']])
             pokemon[enc].update({'cp_multiplier': cpm[pokemon[enc]['level']]})
+
+        if ("pokemon_level" in pokemon[enc] and
+                pokemon[enc]['pokemon_level'] is not None):
+            log.debug("Got a level: %i. CPM: %f",
+                      pokemon[enc]['pokemon_level'],
+                      cpm[pokemon[enc]['pokemon_level']])
+            pokemon[enc].update({'cp_multiplier':
+                                 cpm[pokemon[enc]['pokemon_level']]})
 
         # if people are running an older DB version sending wh:
         if "form" not in pokemon[enc]:
