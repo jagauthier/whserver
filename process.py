@@ -176,7 +176,7 @@ def process_stats():
 class ProcessHook():
 
     # used for bulk imports
-    pokemon_iteration = 1
+    pokemon_iteration = args.pokemon_inserts
     pokemon_counter = 0
 
     # total stats
@@ -267,7 +267,9 @@ class ProcessHook():
         # I don't know... but just in case
         if enc not in self.pokemon_list:
             self.pokemon_list[enc] = pokemon[enc]
-            self.pokemon_counter += 1
+
+        self.pokemon_counter += 1
+
         # put it into the db queue
         if self.pokemon_counter % self.pokemon_iteration == 0:
             db_queue.put((Pokemon, self.pokemon_list))

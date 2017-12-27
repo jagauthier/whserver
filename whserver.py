@@ -143,7 +143,8 @@ if __name__ == '__main__':
     else:
         log.setLevel(logging.INFO)
 
-    create_tables(db)
+    if not args.clear_db:
+        create_tables(db)
     # If we're doing certain things, we'll do them and Then
     # quit
     validate_args()
