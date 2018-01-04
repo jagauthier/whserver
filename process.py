@@ -325,10 +325,34 @@ class ProcessHook():
                    "total_cp", "last_modified"]
 
         gym = {}
-        id = json_data['gym_id']
-        gym[id] = json_data
+
         # copy this for webhook forwarding
-        wh_gym = gym[id].copy()
+        wh_gym = json_data.copy()
+
+        # This is for monkey's fork, which is almost like RM
+        # But has this field, which can be used to identify it.
+        if 'gym_defenders' in json_data:
+            id = json_data['gym_id']
+            gym[id] = json_data
+            gym[id].update({'enabled': True, 'total_cp': 0,
+                            'team_id': gym[id]['team'],
+                            'gym_id': b64encode(gym[id]['gym_id'])})
+            # This wh has the details in it as well.
+            gymdetails = {}
+            gymdetails[id] = {'gym_id': gym[id]['gym_id']}
+            # id is not encoded
+            gymdetails[id].update({
+                               'gym_id': id,
+                               'name': gym[id]['gym_name'],
+                               'description': gym[id]['gym_name'],
+                               'url': gym[id]['gym_url']})
+            db_queue.put((GymDetails, gymdetails))
+        else:
+            id = json_data['gym_id']
+            gym[id] = json_data
+
+        gym[id] = json_data
+
         # need to change this from an epoch style type to
         # datetime.dateime for the database insert
         # and decode the gym id
@@ -460,6 +484,8 @@ class ProcessHook():
                               'pokemon': []}
                 self.process_gym(gym)
                 self.process_gym_details(gymdetails)
+
+        # This is for monkey's fork. It's almost RM, but not quite.
         elif 'raid_seed' in json_data:
             # copy for wh forwarding
 
@@ -467,7 +493,7 @@ class ProcessHook():
             raid[id] = json_data
             wh_raid = raid[id].copy()
 
-            raid[id]['gym_id'] = b64encode(str(time.time()))
+            raid[id]['gym_id'] = json_data['base64_gym_id']
             raid[id]['spawn'] = raid[id]['start'] - 3600
 
             # if we're getting 0, they need to be set to None
@@ -479,24 +505,27 @@ class ProcessHook():
 
             # let's see if we are getting gyms from RM by locating the gym via
             # lat and lon.
-            try:
-                gym_id = Gym.get(Gym.latitude == json_data['latitude'],
-                                 Gym.longitude == json_data['longitude'])
-            except:
+            # Jan 4, 2018: Monkey has made changes to add gym webhooks
+            # and gymdetails. This may no longer be needed.  Will keep it here
+            # for legacy purposes.
+#            try:
+#                gym_id = Gym.get(Gym.latitude == json_data['latitude'],
+#                                 Gym.longitude == json_data['longitude'])
+#            except:
                 # throws an exception if the record cannot be found
-                gym_id = None
+#                gym_id = None
 
-            if gym_id is None:
-                log.info("No gym found. Artifically adding one.")
-                gym = {'gym_id': raid[id]['gym_id'], 'team_id': 0,
-                       'guard_pokemon_id': 0, 'slots_available': 6,
-                       'enabled': 1, 'latitude': raid[id]['latitude'],
-                       'longitude': raid[id]['longitude'], 'total_cp': 0,
-                       'last_modified': time.time() * 1000}
-                self.process_gym(gym)
-            else:
-                log.info("Gym found.")
-                json_data['gym_id'] = b64encode(gym_id.gym_id)
+#            if gym_id is None:
+#                log.info("No gym found. Artifically adding one.")
+#                gym = {'gym_id': raid[id]['gym_id'], 'team_id': 0,
+#                       'guard_pokemon_id': 0, 'slots_available': 6,
+#                       'enabled': 1, 'latitude': raid[id]['latitude'],
+#                       'longitude': raid[id]['longitude'], 'total_cp': 0,
+#                       'last_modified': time.time() * 1000}
+#                self.process_gym(gym)
+#            else:
+#                log.info("Gym found.")
+#                json_data['gym_id'] = b64encode(gym_id.gym_id)
 
         # decode the id back
         raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
@@ -532,7 +561,15 @@ def main_process():
 
         data_string = process_queue.get()
         start = timeit.default_timer()
-        json_data = yaml.load(data_string, Loader=Loader)
+        # YAML is puking on quoted unicode strings.
+        # Making a catch all exception and ignoring it.  I don't have enough
+        # data to solve this atm.
+        try:
+            json_data = yaml.load(data_string, Loader=Loader)
+        except:
+            log.info("YAML had a parsing error.")
+            continue
+
         elapsed = timeit.default_timer() - start
         log.debug("YAML loaded in %.2fs.", elapsed)
         process_queue.task_done()

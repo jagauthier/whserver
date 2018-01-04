@@ -22,6 +22,9 @@ args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 # Want to stay compatible with RM's schema
+# Jan 04, 2018
+# Changed to 21 without any changes. RM just made changes to the
+# WorkerStatus and MainWorker
 db_schema_version = 20
 
 
