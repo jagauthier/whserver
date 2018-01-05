@@ -415,7 +415,7 @@ class ProcessHook():
                                            'additional_cp_multiplier': 0,
                                            'iv_defense': pokemon['def_iv'],
                                            'iv_attack': pokemon['atk_iv'],
-                                           'stamina': pokemon['sta_iv']})
+                                           'iv_stamina': pokemon['sta_iv']})
 
             gym_pokemon[p_uid] = {key: gym_pokemon[p_uid][key]
                                   for key in gym_pokemon[p_uid]
