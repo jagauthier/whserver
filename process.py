@@ -9,7 +9,7 @@ except ImportError:
 
 import timeit
 from peewee import DeleteQuery
-from base64 import b64decode, b64encode
+from base64 import b64decode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
     Trainer, GymPokemon, GymMember, Authorizations, Raid
 from threading import Thread
@@ -325,7 +325,6 @@ class ProcessHook():
                    "total_cp", "last_modified"]
 
         gym = {}
-
         # copy this for webhook forwarding
         wh_gym = json_data.copy()
 
@@ -333,32 +332,20 @@ class ProcessHook():
         # But has this field, which can be used to identify it.
         if 'gym_defenders' in json_data:
             id = json_data['gym_id']
-            gym[id] = json_data
+            gym[id] = json_data.copy()
             gym[id].update({'enabled': True, 'total_cp': 0,
                             'team_id': gym[id]['team'],
-                            'gym_id': b64encode(gym[id]['gym_id'])})
-            # This wh has the details in it as well.
-            gymdetails = {}
-            gymdetails[id] = {'gym_id': gym[id]['gym_id']}
-            # id is not encoded
-            gymdetails[id].update({
-                               'gym_id': id,
-                               'name': gym[id]['gym_name'],
-                               'description': gym[id]['gym_name'],
-                               'url': gym[id]['gym_url']})
-            db_queue.put((GymDetails, gymdetails))
+                            'gym_id': gym[id]['gym_id'],
+                            'last_modified':
+                                time.gmtime(gym[id]['last_modified'])})
+            # now send the whole json data to the details.
+            self.process_gym_details(json_data)
         else:
             id = json_data['gym_id']
-            gym[id] = json_data
-
-        gym[id] = json_data
-
-        # need to change this from an epoch style type to
-        # datetime.dateime for the database insert
-        # and decode the gym id
-        gym[id].update({'last_modified':
-                        time.gmtime(gym[id]['last_modified'] / 1000),
-                        'gym_id': b64decode(gym[id]['gym_id'])})
+            gym[id] = json_data.copy()
+            gym[id].update({'gym_id': b64decode(gym[id]['gym_id']),
+                            'last_modified':
+                                time.gmtime(gym[id]['last_modified'] / 1000)})
 
         # copies all the keys we want for the DB
         gym[id] = {key: gym[id][key] for key in gym[id] if key in to_keep}
@@ -369,7 +356,7 @@ class ProcessHook():
         if args.webhooks:
             wh_queue.put(('gym', wh_gym))
 
-    def process_gympokemon(self, id, gymdetails):
+    def process_gympokemon(self, id, monkey, gymdetails):
         to_keep = ["pokemon_uid", "pokemon_id", "cp", "trainer_name",
                    "num_upgrades", "move_1", "move_2", "height", "weight",
                    "stamina",  "stamina_max", "cp_multiplier",
@@ -378,23 +365,58 @@ class ProcessHook():
         gym_pokemon = {}
         gym_members = {}
         trainers = {}
-        for pokemon in gymdetails[id]['pokemon']:
 
-            trainers[pokemon['trainer_name']] = {
-                'name': pokemon['trainer_name'],
-                'team': gymdetails[id]['team'],
-                'level': pokemon['trainer_level']}
-            p_uid = pokemon['pokemon_uid']
+        if monkey is False:
+            whpokemon = gymdetails[id]['pokemon']
+        else:
+            whpokemon = gymdetails[id]['gym_defenders']
+
+        for pokemon in whpokemon:
+            if monkey is False:
+                trainers[pokemon['trainer_name']] = {
+                    'name': pokemon['trainer_name'],
+                    'team': gymdetails[id]['team'],
+                    'level': pokemon['trainer_level']}
+                p_uid = pokemon['pokemon_uid']
+            else:
+                trainers[pokemon['owner_name']] = {
+                    'name': pokemon['owner_name'],
+                    'team': gymdetails[id]['team'],
+                    'level': 0}
+                p_uid = pokemon['external_id']
 
             if 'deployment_time' not in pokemon:
-                pokemon['deployment_time'] = time.gmtime(time.time() * 1000)
+                pokemon['deployment_time'] = time.time()
 
-            gym_members[p_uid] = {'gym_id': gymdetails[id]['gym_id'],
-                                  'pokemon_uid': p_uid,
-                                  'cp_decayed': pokemon['cp_decayed'],
-                                  'deployment_time':
-                                      time.gmtime(pokemon['deployment_time'])}
+            # Assign the pokemon receveived, and we'll update it as needed
+            # for field mapping
             gym_pokemon[p_uid] = pokemon
+            if monkey is False:
+                gym_members[p_uid] = {'gym_id': gymdetails[id]['gym_id'],
+                                      'pokemon_uid': p_uid,
+                                      'cp_decayed': pokemon['cp_decayed'],
+                                      'deployment_time':
+                                          time.gmtime(
+                                              pokemon['deployment_time'])}
+                gym_pokemon[p_uid] = pokemon
+            else:
+                gym_members[p_uid] = {'gym_id': gymdetails[id]['gym_id'],
+                                      'pokemon_uid': p_uid,
+                                      'cp_decayed': pokemon['cp'],
+                                      'deployment_time':
+                                          time.gmtime(
+                                              pokemon['deployment_time'])}
+
+                gym_pokemon[p_uid].update({'pokemon_uid': p_uid,
+                                           'trainer_name':
+                                               pokemon['owner_name'],
+                                           'height': 0, 'weight': 0,
+                                           'cp_multiplier': 0,
+                                           'additional_cp_multiplier': 0,
+                                           'iv_defense': pokemon['def_iv'],
+                                           'iv_attack': pokemon['atk_iv'],
+                                           'stamina': pokemon['sta_iv']})
+
             gym_pokemon[p_uid] = {key: gym_pokemon[p_uid][key]
                                   for key in gym_pokemon[p_uid]
                                   if key in to_keep}
@@ -406,21 +428,42 @@ class ProcessHook():
         if args.no_gymdetail:
             return
 
+        monkey = False
+        if 'gym_defenders' in json_data:
+            monkey = True
+
         to_keep = ["gym_id", "name", "description", "url"]
 
         gymdetails = {}
-        id = b64decode(json_data['id'])
-        gymdetails[id] = json_data
-        # copy this for webhook forwarding
-        wh_gymdetails = gymdetails[id].copy()
-        # the database sends "id", the but the database
+
+        # this is rocketmap, and the gym is still base64
+        if monkey is False:
+            id = json_data['id']
+            gymdetails[id] = json_data
+            # copy this for webhook forwarding
+            wh_gymdetails = gymdetails[id].copy()
+
+        if monkey is True:
+            id = json_data['gym_id']
+            gymdetails[id] = json_data
+            wh_gymdetails = gymdetails[id].copy()
+            gymdetails[id].update({
+                               'gym_id': id,
+                               'name': gymdetails[id]['gym_name'],
+                               'description': gymdetails[id]['gym_name'],
+                               'url': gymdetails[id]['gym_url']})
+
+        # the wh sends "id", the but the database
         # wants gym_id
-        gymdetails[id].update({'gym_id': b64decode(gymdetails[id]['id'])})
+        if monkey is False:
+            gymdetails[id].update({'gym_id': b64decode(gymdetails[id]['id'])})
+
         # we need to extract trainer and pokemon information before
         # getting gymdetails ready for the database
+
         (gym_pokemon,
          gym_members,
-         trainers) = self.process_gympokemon(id, gymdetails)
+         trainers) = self.process_gympokemon(id, monkey, gymdetails)
 
         # copies all the keys we want for the DB
         gymdetails[id] = {key: gymdetails[id][key] for key in gymdetails[id]
@@ -437,6 +480,7 @@ class ProcessHook():
             GymMember.gym_id << gymdetails.keys()).execute()
 
         db_queue.put((GymMember, gym_members))
+        time.sleep(1)
 
         if args.webhooks:
             wh_queue.put(('gym_details', wh_gymdetails))
@@ -462,31 +506,8 @@ class ProcessHook():
             # always set spawn time
             raid[id]['spawn'] = raid[id]['start'] - 3600
 
-            # team_id in a raid hook means the gym info is coming with the raid
-            # some moncle forks are doing this because monocle doesn't send
-            # gym webhooks
-            if 'team_id' in json_data:
-                gym = {}
-                gym = {'gym_id': json_data['gym_id'],
-                       'team_id': json_data['team_id'],
-                       'latitude': json_data['latitude'],
-                       'longitude': json_data['longitude'],
-                       'guard_pokemon_id': 1,
-                       'slots_available': 0,
-                       'enabled': True,
-                       'total_cp': 0,
-                       'last_modified': int(time.time())}
-                gymdetails = {}
-                gymdetails = {'id': json_data['gym_id'],
-                              'name': json_data['name'],
-                              'description': ' ',
-                              'url': json_data['gym_url'],
-                              'pokemon': []}
-                self.process_gym(gym)
-                self.process_gym_details(gymdetails)
-
         # This is for monkey's fork. It's almost RM, but not quite.
-        elif 'raid_seed' in json_data:
+        elif 'base64_gym_id' in json_data:
             # copy for wh forwarding
 
             id = json_data['raid_seed']
@@ -502,30 +523,6 @@ class ProcessHook():
                                  'pokemon_id': None,
                                  'move_1': None,
                                  'move_2': None})
-
-            # let's see if we are getting gyms from RM by locating the gym via
-            # lat and lon.
-            # Jan 4, 2018: Monkey has made changes to add gym webhooks
-            # and gymdetails. This may no longer be needed.  Will keep it here
-            # for legacy purposes.
-#            try:
-#                gym_id = Gym.get(Gym.latitude == json_data['latitude'],
-#                                 Gym.longitude == json_data['longitude'])
-#            except:
-                # throws an exception if the record cannot be found
-#                gym_id = None
-
-#            if gym_id is None:
-#                log.info("No gym found. Artifically adding one.")
-#                gym = {'gym_id': raid[id]['gym_id'], 'team_id': 0,
-#                       'guard_pokemon_id': 0, 'slots_available': 6,
-#                       'enabled': 1, 'latitude': raid[id]['latitude'],
-#                       'longitude': raid[id]['longitude'], 'total_cp': 0,
-#                       'last_modified': time.time() * 1000}
-#                self.process_gym(gym)
-#            else:
-#                log.info("Gym found.")
-#                json_data['gym_id'] = b64encode(gym_id.gym_id)
 
         # decode the id back
         raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),

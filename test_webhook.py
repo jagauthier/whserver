@@ -195,7 +195,7 @@ if __name__ == '__main__':
     i = 0
     while i < options.iterations:
         pokemon = get_pokemon(options)
-        process_post('pokemon', pokemon, options)
+#        process_post('pokemon', pokemon, options)
 
         # below here, these are pokestop, and gyms.
         # The intent is that when you run this for thousands
