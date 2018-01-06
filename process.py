@@ -525,10 +525,15 @@ class ProcessHook():
                                  'move_2': None})
 
         # decode the id back
-        raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
-                         'spawn': time.gmtime(raid[id]['spawn']),
-                         'start': time.gmtime(raid[id]['start']),
-                         'end': time.gmtime(raid[id]['end'])})
+        try:
+            raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
+                             'spawn': time.gmtime(raid[id]['spawn']),
+                             'start': time.gmtime(raid[id]['start']),
+                             'end': time.gmtime(raid[id]['end'])})
+        except TypeError:
+            log.info("There was an error decoding the raid info.")
+            log.info("%", raid)
+            return
         # copies all the keys we want for the DB
         raid[id] = {key: raid[id][key]
                     for key in raid[id] if key in to_keep}
