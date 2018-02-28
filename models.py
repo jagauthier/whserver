@@ -7,11 +7,11 @@ import time
 import sys
 from peewee import InsertQuery, FloatField, SmallIntegerField, \
     IntegerField, CharField, DoubleField, BooleanField, \
-    DateTimeField, TextField, Model
+    DateTimeField, TextField, Model, BigIntegerField
 from datetime import datetime, timedelta
 
 from timeit import default_timer
-from utils import get_args, get_queues
+from utils import get_args, get_queues, peewee_attr_to_col
 from playhouse.pool import PooledMySQLDatabase
 from playhouse.shortcuts import RetryOperationalError
 from playhouse.migrate import migrate, MySQLMigrator
@@ -25,7 +25,7 @@ args = get_args()
 # Jan 04, 2018
 # Changed to 21 without any changes. RM just made changes to the
 # WorkerStatus and MainWorker
-db_schema_version = 20
+db_schema_version = 26
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -44,20 +44,23 @@ class Utf8mb4CharField(CharField):
 
 
 def init_database():
-    if args.db_type == 'mysql':
-        log.info('Connecting to MySQL database on %s:%i...',
-                 args.db_host, args.db_port)
-        connections = args.db_max_connections
-        global db
-        db = MyRetryDB(
-            args.db_name,
-            user=args.db_user,
-            password=args.db_pass,
-            host=args.db_host,
-            port=args.db_port,
-            max_connections=connections,
-            stale_timeout=300)
+    log.info('Connecting to MySQL database on %s:%i...',
+             args.db_host, args.db_port)
+    connections = args.db_max_connections
+    global db
+    db = MyRetryDB(
+        args.db_name,
+        user=args.db_user,
+        password=args.db_pass,
+        host=args.db_host,
+        port=args.db_port,
+        max_connections=connections,
+        stale_timeout=300)
     return db
+
+
+class UBigIntegerField(BigIntegerField):
+    db_field = 'bigint unsigned'
 
 
 class BaseModel(Model):
@@ -70,8 +73,8 @@ class BaseModel(Model):
 class Pokemon(BaseModel):
     # We are base64 encoding the ids delivered by the api
     # because they are too big for sqlite to handle.
-    encounter_id = Utf8mb4CharField(primary_key=True, max_length=50)
-    spawnpoint_id = Utf8mb4CharField(index=True)
+    encounter_id = UBigIntegerField(primary_key=True)
+    spawnpoint_id = UBigIntegerField(index=True)
     pokemon_id = SmallIntegerField(index=True)
     latitude = DoubleField()
     longitude = DoubleField()
@@ -86,7 +89,9 @@ class Pokemon(BaseModel):
     weight = FloatField(null=True)
     height = FloatField(null=True)
     gender = SmallIntegerField(null=True)
+    costume = SmallIntegerField(null=True)
     form = SmallIntegerField(null=True)
+    weather_boosted_condition = SmallIntegerField(null=True)
     last_modified = DateTimeField(
         null=True, index=True, default=datetime.utcnow)
 
@@ -101,8 +106,7 @@ class Pokestop(BaseModel):
     longitude = DoubleField()
     last_modified = DateTimeField(index=True)
     lure_expiration = DateTimeField(null=True, index=True)
-    active_fort_modifier = Utf8mb4CharField(
-        max_length=50, null=True, index=True)
+    active_fort_modifier = SmallIntegerField(null=True, index=True)
     last_updated = DateTimeField(
         null=True, index=True, default=datetime.utcnow)
 
@@ -133,7 +137,7 @@ class Gym(BaseModel):
 
 class GymMember(BaseModel):
     gym_id = Utf8mb4CharField(index=True)
-    pokemon_uid = Utf8mb4CharField(index=True)
+    pokemon_uid = UBigIntegerField(index=True)
     last_scanned = DateTimeField(default=datetime.utcnow, index=True)
     deployment_time = DateTimeField()
     cp_decayed = SmallIntegerField()
@@ -143,7 +147,7 @@ class GymMember(BaseModel):
 
 
 class GymPokemon(BaseModel):
-    pokemon_uid = Utf8mb4CharField(primary_key=True, max_length=50)
+    pokemon_uid = UBigIntegerField(primary_key=True)
     pokemon_id = SmallIntegerField()
     cp = SmallIntegerField()
     trainer_name = Utf8mb4CharField(index=True)
@@ -159,6 +163,9 @@ class GymPokemon(BaseModel):
     iv_defense = SmallIntegerField(null=True)
     iv_stamina = SmallIntegerField(null=True)
     iv_attack = SmallIntegerField(null=True)
+    costume = SmallIntegerField(null=True)
+    form = SmallIntegerField(null=True)
+    shiny = SmallIntegerField(null=True)
     last_seen = DateTimeField(default=datetime.utcnow)
 
 
@@ -205,6 +212,67 @@ class Raid(BaseModel):
     move_2 = SmallIntegerField(null=True)
     last_scanned = DateTimeField(
         default=datetime.utcnow, index=True)
+
+
+class Weather(BaseModel):
+    s2_cell_id = Utf8mb4CharField(primary_key=True, max_length=50)
+    latitude = DoubleField()
+    longitude = DoubleField()
+    cloud_level = SmallIntegerField(null=True, index=True, default=0)
+    rain_level = SmallIntegerField(null=True, index=True, default=0)
+    wind_level = SmallIntegerField(null=True, index=True, default=0)
+    snow_level = SmallIntegerField(null=True, index=True, default=0)
+    fog_level = SmallIntegerField(null=True, index=True, default=0)
+    wind_direction = SmallIntegerField(null=True, index=True, default=0)
+    gameplay_weather = SmallIntegerField(null=True, index=True, default=0)
+    severity = SmallIntegerField(null=True, index=True, default=0)
+    warn_weather = SmallIntegerField(null=True, index=True, default=0)
+    world_time = SmallIntegerField(null=True, index=True, default=0)
+    last_updated = DateTimeField(
+        default=datetime.utcnow,
+        null=True,
+        index=True)
+
+    @staticmethod
+    def get_weathers():
+        query = Weather.select().dicts()
+
+        weathers = []
+        for w in query:
+            weathers.append(w)
+
+        return weathers
+
+    @staticmethod
+    def get_weather_by_location(swLat, swLng, neLat, neLng, alert):
+        # We can filter by the center of a cell, this deltas can expand
+        # the viewport bounds
+        # So cells with center outside the viewport, but close to it
+        # can be rendered
+        # otherwise edges of cells that intersects with viewport
+        # won't be rendered
+        lat_delta = 0.15
+        lng_delta = 0.4
+        if not alert:
+            query = Weather.select().where(
+                (Weather.latitude >= float(swLat) - lat_delta) &
+                (Weather.longitude >= float(swLng) - lng_delta) &
+                (Weather.latitude <= float(neLat) + lat_delta) &
+                (Weather.longitude <= float(neLng) + lng_delta)
+            ).dicts()
+        else:
+            query = Weather.select().where(
+                (Weather.latitude >= float(swLat) - lat_delta) &
+                (Weather.longitude >= float(swLng) - lng_delta) &
+                (Weather.latitude <= float(neLat) + lat_delta) &
+                (Weather.longitude <= float(neLng) + lng_delta) &
+                (Weather.severity.is_null(False))
+            ).dicts()
+        weathers = []
+        for w in query:
+            weathers.append(w)
+
+        return weathers
 
 
 def db_updater():
@@ -290,7 +358,7 @@ def clean_db_loop():
             log.exception('Exception in clean_db_loop: %s', repr(e))
 
 
-def bulk_upsert(cls, data, db):
+def bulk_upsert_old(cls, data, db):
     num_rows = len(data.values())
     i = 0
     step = 250
@@ -335,10 +403,160 @@ def bulk_upsert(cls, data, db):
             i += step
 
 
+def bulk_upsert(cls, data, db):
+    rows = data.values()
+    num_rows = len(rows)
+    i = 0
+
+    max_fails = 3
+    fails = 0
+
+    # This shouldn't happen, ever, but anyways...
+    if num_rows < 1:
+        return
+
+    # We used to support SQLite and it has a default max 999 parameters,
+    # so we limited how many rows we insert for it.
+    # Oracle: 64000
+    # MySQL: 65535
+    # PostgreSQL: 34464
+    # Sqlite: 999
+    step = 500
+
+    # Prepare for our query.
+    conn = db.get_conn()
+    cursor = db.get_cursor()
+
+    # We build our own INSERT INTO ... ON DUPLICATE KEY UPDATE x=VALUES(x)
+    # query, making sure all data is properly escaped. We use
+    # placeholders for VALUES(%s, %s, ...) so we can use executemany().
+    # We use peewee's InsertQuery to retrieve the fields because it
+    # takes care of peewee's internals (e.g. required default fields).
+    query = InsertQuery(cls, rows=[rows[0]])
+    # Take the first row. We need to call _iter_rows() for peewee internals.
+    # Using next() for a single item is not considered "pythonic".
+    first_row = {}
+    for row in query._iter_rows():
+        first_row = row
+        break
+    # Convert the row to its fields, sorted by peewee.
+    row_fields = sorted(first_row.keys(), key=lambda x: x._sort_key)
+    row_fields = map(lambda x: x.name, row_fields)
+    # Translate to proper column name, e.g. foreign keys.
+    db_columns = [peewee_attr_to_col(cls, f) for f in row_fields]
+
+    # Store defaults so we can fall back to them if a value
+    # isn't set.
+    defaults = {}
+
+    for f in cls._meta.fields.values():
+        # Use DB column name as key.
+        field_name = f.name
+        field_default = cls._meta.defaults.get(f, None)
+        defaults[field_name] = field_default
+
+    # Assign fields, placeholders and assignments after defaults
+    # so our lists/keys stay in order.
+    table = '`' + conn.escape_string(cls._meta.db_table) + '`'
+    escaped_fields = ['`' + conn.escape_string(f) + '`' for f in db_columns]
+    placeholders = ['%s' for escaped_field in escaped_fields]
+    assignments = ['{x} = VALUES({x})'.format(
+        x=escaped_field
+    ) for escaped_field in escaped_fields]
+
+    # We build our own MySQL query because peewee only supports
+    # REPLACE INTO for upserting, which deletes the old row before
+    # adding the new one, giving a serious performance hit.
+    query_string = ('INSERT INTO {table} ({fields}) VALUES'
+                    + ' ({placeholders}) ON DUPLICATE KEY UPDATE'
+                    + ' {assignments}')
+
+    # Prepare transaction.
+
+    with db.atomic():
+        while i < num_rows:
+            start = i
+            end = min(i + step, num_rows)
+            name = cls.__name__
+
+            log.debug('Inserting items %d to %d for %s.', start, end, name)
+            try:
+                # Turn off FOREIGN_KEY_CHECKS on MySQL, because apparently it's
+                # unable to recognize strings to update unicode keys for
+                # foreign key fields, thus giving lots of foreign key
+                # constraint errors.
+                db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
+
+                # Time to bulk upsert our data. Convert objects to a list of
+                # values for executemany(), and fall back to defaults if
+                # necessary.
+                batch = []
+                batch_rows = rows[i:min(i + step, num_rows)]
+
+                # We pop them off one by one so we can gradually release
+                # memory as we pass each item. No duplicate memory usage.
+                while len(batch_rows) > 0:
+                    row = batch_rows.pop()
+                    row_data = []
+
+                    # Parse rows, build arrays of values sorted via row_fields.
+                    for field in row_fields:
+                        # Take a default if we need it.
+                        if field not in row:
+                            default = defaults.get(field, None)
+
+                            # peewee's defaults can be callable, e.g. current
+                            # time. We only call when needed to insert.
+                            if callable(default):
+                                default = default()
+
+                            row[field] = default
+
+                        # Append to keep the exact order, and only these
+                        # fields.
+                        row_data.append(row[field])
+                    # Done preparing, add it to the batch.
+                    batch.append(row_data)
+
+                # Format query and go.
+                formatted_query = query_string.format(
+                    table=table,
+                    fields=', '.join(escaped_fields),
+                    placeholders=', '.join(placeholders),
+                    assignments=', '.join(assignments)
+                )
+
+                cursor.executemany(formatted_query, batch)
+                db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
+
+            except Exception as e:
+                # If there is a DB table constraint error, dump the data and
+                # don't retry.
+                #
+                # Unrecoverable error strings:
+                unrecoverable = ['constraint', 'has no attribute',
+                                 'peewee.IntegerField object at']
+                has_unrecoverable = filter(
+                    lambda x: x in str(e), unrecoverable)
+                if has_unrecoverable:
+                    log.warning('%s. Data is:', repr(e))
+                    log.warning(data.items())
+                else:
+                    log.warning('%s... Retrying...', repr(e))
+                    log.warning('%s', pprint.pformat(data))
+                    time.sleep(1)
+                    fails += 1
+                    if fails > max_fails:
+                        return
+                    continue
+
+            i += step
+
+
 def create_tables(db):
     verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
-              GymPokemon, Trainer, Raid, Versions]
+              GymPokemon, Trainer, Raid, Versions, Weather]
     db.get_conn()
     for table in tables:
         if not table.table_exists():
@@ -373,7 +591,7 @@ def create_tables(db):
 
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,
-              GymPokemon, Trainer, Raid, Versions]
+              GymPokemon, Trainer, Raid, Versions, Weather]
     db.get_conn()
     db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
     for table in tables:
@@ -437,3 +655,36 @@ def database_migrate(db, old_ver):
                                     null=False, default=datetime.utcnow())),
             migrator.add_column('gym', 'total_cp',
                                 SmallIntegerField(null=False, default=0)))
+
+    # RM DB 21 removes base64. We don't already have it, but RM does.
+    # So it was not needed.
+
+    # RM DB 22 altered spawnpoints. We don't use those
+
+    # RM DB 23 changes workstatus and mainworker. We don't care.
+
+    if old_ver < 24:
+        migrate(
+            migrator.drop_index('pokemon', 'pokemon_disappear_time'),
+            migrator.add_index('pokemon',
+                               ('disappear_time', 'pokemon_id'), False)
+        )
+    if old_ver < 25:
+        migrate(
+            # Add `costume` column to `pokemon`
+            migrator.add_column('pokemon', 'costume',
+                                SmallIntegerField(null=True)),
+            # Add `form` column to `gympokemon`
+            migrator.add_column('gympokemon', 'form',
+                                SmallIntegerField(null=True)),
+            # Add `costume` column to `gympokemon`
+            migrator.add_column('gympokemon', 'costume',
+                                SmallIntegerField(null=True)))
+    if old_ver < 26:
+        migrate(
+            migrator.add_column('pokemon', 'weather_boosted_condition',
+                                SmallIntegerField(null=True))
+        )
+        # Add shiny column to gympokemon
+        migrate(migrator.add_column('gympokemon', 'shiny',
+                                    SmallIntegerField(null=True)))

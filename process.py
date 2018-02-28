@@ -2,6 +2,8 @@ import time
 import random
 import logging
 import yaml
+import pprint
+import s2sphere
 try:
     from yaml import CLoader as Loader
 except ImportError:
@@ -9,9 +11,8 @@ except ImportError:
 
 import timeit
 from peewee import DeleteQuery
-from base64 import b64decode
 from models import Pokemon, Gym, Pokestop, GymDetails, \
-    Trainer, GymPokemon, GymMember, Authorizations, Raid
+    Trainer, GymPokemon, GymMember, Authorizations, Raid, Weather
 from threading import Thread
 from utils import get_args, get_queues
 
@@ -52,7 +53,7 @@ class Auth():
     post_fail = 0
 
     def __init__(self):
-        log.debug("Beginning authorization thread.")
+        log.info("Beginning authorization thread.")
         t = Thread(target=self.load_auth, name='load-auth')
         t.daemon = True
         t.start()
@@ -101,6 +102,7 @@ def process_stats():
     gym_details = 0
     ignored = 0
     raid_total = 0
+    weather_total = 0
 
     max_stat_queue = 0
     max_db_queue = 0
@@ -123,6 +125,7 @@ def process_stats():
             gym_details += data['gymdetails']
             ignored += data['ignored']
             raid_total += data['raids']
+            weather_total += data['weather']
 
         if stat == "authorizations":
             auths = data
@@ -155,6 +158,7 @@ def process_stats():
             log.info("Gyms: %i", gym_total)
             log.info("Gym details: %i", gym_details)
             log.info("Raids: %i", raid_total)
+            log.info("Weather: %i", weather_total)
             log.info("Ignored: %i", ignored)
             log.info("Average requests per minute: %i",
                      int((post_success + post_fails) /
@@ -186,6 +190,7 @@ class ProcessHook():
     gym_details = 0
     ignored = 0
     raid_total = 0
+    weather_total = 0
     # to hold multiple pokemon for bulk insertions
     pokemon_list = {}
 
@@ -202,6 +207,7 @@ class ProcessHook():
                      'gyms': self.gym_total,
                      'gymdetails': self.gym_details,
                      'raids': self.raid_total,
+                     'weather': self.weather_total,
                      'ignored': self.ignored
                      }
             stats_queue.put(('stats', stats))
@@ -222,7 +228,8 @@ class ProcessHook():
                    "longitude", "disappear_time", "individual_attack",
                    "individual_defense", "individual_stamina", "move_1",
                    "move_2", "weight", "height", "gender", "form", "cp",
-                   "cp_multiplier", "last_modified"]
+                   "cp_multiplier", "last_modified", "costume",
+                   "weather_boosted_condition"]
         pokemon = {}
         enc = json_data['encounter_id']
         pokemon[enc] = json_data
@@ -294,7 +301,6 @@ class ProcessHook():
         # copy this for webhook forwarding
         wh_pokestop = pokestop[id].copy()
         # last_modified is DB, last_modified_time is WH
-        # and decode the id back
         if pokestop[id]['lure_expiration'] is not None:
             pokestop[id].update({'lure_expiration':
                                  time.gmtime(pokestop[id]['lure_expiration']
@@ -302,8 +308,7 @@ class ProcessHook():
         pokestop[id].update({'last_modified':
                              time.gmtime(
                                  pokestop[id]['last_modified_time'] / 1000),
-                             'pokestop_id':
-                             b64decode(pokestop[id]['pokestop_id'])})
+                             'pokestop_id': pokestop[id]['pokestop_id']})
         # copies all the keys we want for the DB
         pokestop[id] = {key: pokestop[id][key]
                         for key in pokestop[id] if key in to_keep}
@@ -343,7 +348,7 @@ class ProcessHook():
         else:
             id = json_data['gym_id']
             gym[id] = json_data.copy()
-            gym[id].update({'gym_id': b64decode(gym[id]['gym_id']),
+            gym[id].update({'gym_id': gym[id]['gym_id'],
                             'last_modified':
                                 time.gmtime(gym[id]['last_modified'] / 1000)})
 
@@ -361,7 +366,7 @@ class ProcessHook():
                    "num_upgrades", "move_1", "move_2", "height", "weight",
                    "stamina",  "stamina_max", "cp_multiplier",
                    "additional_cp_multiplier", "iv_defense", "iv_stamina",
-                   "iv_attack"]
+                   "iv_attack", "costume", "form", "shiny"]
         gym_pokemon = {}
         gym_members = {}
         trainers = {}
@@ -448,15 +453,18 @@ class ProcessHook():
             gymdetails[id] = json_data
             wh_gymdetails = gymdetails[id].copy()
             gymdetails[id].update({
-                               'gym_id': id,
-                               'name': gymdetails[id]['gym_name'],
-                               'description': gymdetails[id]['gym_name'],
-                               'url': gymdetails[id]['gym_url']})
+                'gym_id': id,
+                'name': gymdetails[id]['name'],
+                'description': gymdetails[id]['name'],
+                'url': gymdetails[id]['url']})
+            # I found a gym that doesn't send a name, so we'll put this here.
+            if gymdetails[id]['name'] is None:
+                gymdetails[id].update({'name': "None"})
 
         # the wh sends "id", the but the database
         # wants gym_id
         if monkey is False:
-            gymdetails[id].update({'gym_id': b64decode(gymdetails[id]['id'])})
+            gymdetails[id].update({'gym_id': gymdetails[id]['id']})
 
         # we need to extract trainer and pokemon information before
         # getting gymdetails ready for the database
@@ -497,25 +505,27 @@ class ProcessHook():
 
         raid = {}
 
-        # Assume RocketMap
-        if 'gym_id' in json_data:
-            # standard RM wh
-            id = json_data['gym_id']
-            raid[id] = json_data
-            wh_raid = raid[id].copy()
-            # always set spawn time
-            raid[id]['spawn'] = raid[id]['start'] - 3600
-
         # This is for monkey's fork. It's almost RM, but not quite.
-        elif 'base64_gym_id' in json_data:
-            # copy for wh forwarding
+        # 02/25/18
+        # Monkey added gym_id AND base64_gym_id,so this was breaking
+        # and I just had to switch the checks around
+        # Looks like he also changed the raid dictionary objects
+        if 'base64_gym_id' in json_data:
+            try:
+                Gym.get(Gym.id == json_data['gym_id'])
+            except:
+                log.info("No Gym found for raid." +
+                         "When the gym is sent it will be okay.")
 
             id = json_data['raid_seed']
             raid[id] = json_data
             wh_raid = raid[id].copy()
 
-            raid[id]['gym_id'] = json_data['base64_gym_id']
-            raid[id]['spawn'] = raid[id]['start'] - 3600
+            # Map all the fields
+            raid[id]['gym_id'] = json_data['gym_id']
+            raid[id]['spawn'] = raid[id]['raid_begin'] - 3600
+            raid[id]['start'] = raid[id]['raid_begin']
+            raid[id]['end'] = raid[id]['raid_end']
 
             # if we're getting 0, they need to be set to None
             if raid[id]['cp'] == 0:
@@ -524,9 +534,17 @@ class ProcessHook():
                                  'move_1': None,
                                  'move_2': None})
 
-        # decode the id back
+        # And this is stock RM
+        elif 'gym_id' in json_data:
+            # standard RM wh
+            id = json_data['gym_id']
+            raid[id] = json_data
+            wh_raid = raid[id].copy()
+            # always set spawn time
+            raid[id]['spawn'] = raid[id]['start'] - 3600
+
         try:
-            raid[id].update({'gym_id': b64decode(raid[id]['gym_id']),
+            raid[id].update({'gym_id': raid[id]['gym_id'],
                              'spawn': time.gmtime(raid[id]['spawn']),
                              'start': time.gmtime(raid[id]['start']),
                              'end': time.gmtime(raid[id]['end'])})
@@ -544,6 +562,64 @@ class ProcessHook():
         if args.webhooks:
             wh_queue.put(('raid', wh_raid))
 
+    def process_weather(self, json_data):
+        self.weather_total += 1
+
+        if args.no_weather:
+            return
+
+        to_keep = ["s2_cell_id", "latitude", "longitude", "cloud_level",
+                   "rain_level", "snow_level", "fog_level", "wind_direction",
+                   "gameplay_weather", "severity", "warn_weather",
+                   "world_time", "last_updated"]
+
+        weather = {}
+
+        # This is for monkey's fork. It's almost RM, but not quite.
+        # As if this writing, RM doesn't have support for weather
+        # 02/28/18
+        if 'coords' in json_data:
+            id = json_data['s2_cell_id']
+            weather[id] = json_data
+            wh_weather = weather[id].copy()
+
+            # Map all the fields
+            weather[id]['severity'] = json_data['alert_severity']
+            weather[id]['last_updated'] = time.gmtime(
+                                          json_data['time_changed'])
+            weather[id]['warn_weather'] = json_data['warn']
+            # Day =1 night = 2
+            weather[id]['world_time'] = json_data['day']
+            # condition
+            weather[id]['gameplay_weather'] = json_data['condition']
+
+            # Monkey sends the coordinates, but we do not actually need them.
+            cell_id = s2sphere.CellId(long(id))
+            cell = s2sphere.Cell(cell_id)
+            center = s2sphere.LatLng.from_point(cell.get_center())
+            weather[id]['latitude'] = center.lat().degrees
+            weather[id]['longitude'] = center.lng().degrees
+
+            # This is a WAG until I get more info
+            weather[id]['cloud_level'] = 0
+            weather[id]['rain_level'] = 0
+            weather[id]['snow_level'] = 0
+            weather[id]['fog_level'] = 0
+            weather[id]['wind_direction'] = 0
+
+        # And this is stock RM
+        else:
+            pass
+        # copies all the keys we want for the DB
+        weather[id] = {key: weather[id][key]
+                       for key in weather[id] if key in to_keep}
+
+        log.debug("%s", weather)
+        # put it into the db queue
+        db_queue.put((Weather, weather))
+        if args.webhooks:
+            wh_queue.put(('weather', wh_weather))
+
     def reset_stats(self):
         self.pokemon_total = 0
         self.pokestop_total = 0
@@ -555,12 +631,11 @@ class ProcessHook():
 
 def main_process():
 
-    handled = ["pokemon", "pokestop", "gym", "gym_details", "raid"]
+    handled = ["pokemon", "pokestop", "gym", "gym_details", "raid", "weather"]
 
     PH = ProcessHook()
     max_queue_size = 0
     while (True):
-
         data_string = process_queue.get()
         start = timeit.default_timer()
         # YAML is puking on quoted unicode strings.
@@ -592,7 +667,7 @@ def main_process():
 
                 if data_type and message:
                     if data_type in handled:
-                        log.debug("Processing: %s", data_type)
+                        # log.info("Processing: %s", data_type)
                         func = getattr(PH, "process_" + data_type)
                         func(message)
                     else:
@@ -609,12 +684,13 @@ def main_process():
                     message = record['message']
 
                     if data_type in handled:
-                        log.debug("Processing: %s", data_type)
+                        # log.info("Processing: %s", data_type)
                         func = getattr(PH, "process_" + data_type)
                         func(message)
                     else:
                         log.warn("Received unhandled webhook type: %s",
                                  data_type)
+                        pprint.pprint(json_data)
                 log.debug("Received %i records.", records)
             else:
                 log.warn("Got an unexpected data type.")

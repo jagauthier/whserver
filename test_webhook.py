@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from base64 import b64encode
 import string
 import random
 import time
@@ -12,10 +11,10 @@ UNOWN = 201
 def get_pokemon(options):
 
     lst = [random.choice(
-           string.ascii_letters + string.digits) for n in xrange(16)]
-    encounter = b64encode("".join(lst))
+           string.digits) for n in xrange(16)]
+    encounter = "".join(lst)
     spawnpoint = [random.choice(
-        string.ascii_letters + string.digits) for n in xrange(12)]
+        string.digits) for n in xrange(12)]
     spawnpoint = "".join(spawnpoint)
     despawn = random.randint(15 * 60, 60 * 60)
     location = options.location.split(",")
@@ -36,13 +35,14 @@ def get_pokemon(options):
             location[1]) + random.uniform(0 - variance, variance),
         'move_1': random.randint(1, 137),
         'move_2': random.randint(200, 281),
-        'pokemon_id': random.randint(1, 251),
+        'pokemon_id': random.randint(1, 350),
         'seconds_until_despawn': despawn,
         'spawn_start': random.randint(500, 3000),
         'spawn_end': random.randint(500, 3000),
         'time_until_hidden_ms': int(time.time() * 1000) + 7200,
         'verified': True,
-        'weight': random.uniform(5, 15)
+        'weight': random.uniform(5, 15),
+        'costume': 0
     }
     if pokemon['pokemon_id'] == UNOWN:
         pokemon.update({'form': random.randint(1, 26)})
@@ -52,9 +52,9 @@ def get_pokemon(options):
 
 def get_pokestop(options):
 
-    lst = [random.choice(string.ascii_letters + string.digits)
+    lst = [random.choice(string.digits)
            for n in xrange(16)]
-    id = b64encode("".join(lst))
+    id = "".join(lst)
     location = options.location.split(",")
     variance = options.variance
     pokestop = {
@@ -118,6 +118,8 @@ def get_gymdetails(gym):
              'stamina_max': random.randint(1, 281),
              'trainer_level': random.randint(1, 40),
              'pokemon_uid': random.randint(10000, 20000),
+             'form': 1,
+             'costume': 0,
              'trainer_name': random.choice(trainer_names),
              'deployment_time': int(time.time() + random.randint(-3600, 0))
              })
@@ -127,9 +129,9 @@ def get_gymdetails(gym):
 
 
 def get_gym(options):
-    lst = [random.choice(string.ascii_letters + string.digits)
+    lst = [random.choice(string.digits)
            for n in xrange(16)]
-    id = b64encode("".join(lst))
+    id = "".join(lst)
     location = options.location.split(",")
     variance = options.variance
     gym = {
@@ -195,7 +197,7 @@ if __name__ == '__main__':
     i = 0
     while i < options.iterations:
         pokemon = get_pokemon(options)
-#        process_post('pokemon', pokemon, options)
+        process_post('pokemon', pokemon, options)
 
         # below here, these are pokestop, and gyms.
         # The intent is that when you run this for thousands

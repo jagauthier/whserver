@@ -48,9 +48,6 @@ def get_args():
     parser.add_argument('-P', '--port', type=int,
                         help='Set web server listening port. ' +
                         'default=5001', default=5001)
-    parser.add_argument('--db-type',
-                        help='Type of database to be used (default: mysql).',
-                        default='mysql')
     parser.add_argument('-cd', '--clear-db',
                         help='Clear the database tables, and recreate. ' +
                         'Does not delete the authorizations.',
@@ -68,6 +65,10 @@ def get_args():
                         help=('Number of db threads; increase if the db ' +
                               'queue falls behind.'),
                         type=int, default=2)
+    parser.add_argument('--httpd-threads',
+                        help=('Number of httpd threads.'),
+                        type=int, default=100)
+
     parser.add_argument('-g', '--generate', help='Generate an authorization ' +
                         'token. An identifying string is required.')
     ignore_list = parser.add_mutually_exclusive_group()
@@ -92,9 +93,16 @@ def get_args():
     parser.add_argument('-nr', '--no-raids',
                         help='Raids will not be stored in the database.',
                         action='store_true', default=False)
+    parser.add_argument('-nw', '--no-weather',
+                        help='Weather will not be stored in the database.',
+                        action='store_true', default=False)
     parser.add_argument('-rs', '--runtime-statistics',
                         help='Display usage statistics. Specified in ' +
                         'minutes', type=int, default=0)
+    parser.add_argument('-sh', '--safe-httpd',
+                        help='Run a more conservative HTTPD service',
+                        action='store_true', default=False)
+
     parser.add_argument('-pd', '--purge-data',
                         help=('Clear Pokemon from database this many hours ' +
                               'after they disappear (0 to disable).'),
@@ -147,10 +155,23 @@ def get_args():
 
     args = parser.parse_args()
 
-    if None in (args.db_type, args.db_name, args.db_user,
+    if None in (args.db_name, args.db_user,
                 args.db_pass, args.db_host):
         parser.print_usage()
         print(sys.argv[0] + ": DB info is not set correctly.")
         exit(1)
 
     return args
+
+
+# Translate peewee model class attribute to database column name.
+def peewee_attr_to_col(cls, field):
+    field_column = getattr(cls, field)
+
+    # Only try to do it on populated fields.
+    if field_column is not None:
+        field_column = field_column.db_column
+    else:
+        field_column = field
+
+    return field_column

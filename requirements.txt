@@ -10,3 +10,4 @@ PyYAML==3.12
 requests==2.13.0
 requests-futures==0.9.7
 six==1.10.0
+s2sphere==0.2.4

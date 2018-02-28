@@ -1,15 +1,21 @@
 #!/usr/bin/env python
 import logging
 from threading import Thread
+import threading
+
 from models import db, db_updater, create_tables, drop_tables, \
     clean_db_loop, Authorizations, bulk_upsert
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+
+from SocketServer import ThreadingMixIn
+
 import random
 import string
 from sets import Set
 from webhook import wh_updater
 from process import main_process, Auth, process_stats
 import socket
+import time
 from utils import get_args, get_queues
 
 logging.basicConfig(
@@ -22,14 +28,40 @@ args = get_args()
 (db_queue, wh_queue, process_queue, stats_queue) = get_queues()
 
 
-class Server(HTTPServer):
+class ThreadHTTP(threading.Thread):
+    def __init__(self, i, sock, handler, auth):
+        threading.Thread.__init__(self)
+        self.i = i
+        self.daemon = True
+        self.sock = sock
+        self.handler = handler
+        self.auth = auth
+        self.start()
+
+    def run(self):
+        httpd = HTTPServer((args.host, args.port), self.handler, False)
+
+        # Prevent the HTTP server from re-binding every handler.
+        # https://stackoverflow.com/questions/46210672/
+        httpd.socket = self.sock
+        httpd.server_bind = self.server_close = lambda self: None
+        httpd.RequestHandlerClass.auth = self.auth
+        httpd.serve_forever()
+
+
+class ThreadedServer(ThreadingMixIn, HTTPServer):
+
     request_queue_size = 2048
 
+    def setauth(self, auth):
+        self.auth = auth
+
     def serve_forever(self):
-        self.RequestHandlerClass.auth = Auth()
+        self.RequestHandlerClass.auth = self.auth
         HTTPServer.serve_forever(self)
 
     def server_activate(self):
+        self.socket.settimeout(3.0)
         self.socket.listen(self.request_queue_size)
 
 
@@ -55,7 +87,7 @@ class HTTPHandler(BaseHTTPRequestHandler):
             pass
 
     def log_message(self, format, *args):
-        pass
+        log.debug("%s", format % args)
 
     def do_POST(self):
         # First check if the path is an accepted value
@@ -68,8 +100,8 @@ class HTTPHandler(BaseHTTPRequestHandler):
                 pass
             self.post_fails += 1
             return
-
         data_string = self.rfile.read(int(self.headers['Content-Length']))
+
         try:
             self.send_response(200)
             self.end_headers()
@@ -128,6 +160,30 @@ def validate_args():
     args.ignore_pokemon = Set([int(i) for i in args.ignore_pokemon])
 
 
+def launch_httpd(httpd, auth):
+
+    log.info("Server Starts - %s:%s", args.host, args.port)
+    httpd.setauth(auth)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        raise
+
+    httpd.server_close()
+    log.info("Server Stops - %s:%s", args.host, args.port)
+
+
+def launch_threaded_httpd(handler, auth):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((args.host, args.port))
+    sock.listen(5)
+    log.info("Launching HTTP server - %s:%s", args.host, args.port)
+    [ThreadHTTP(i, sock, handler, auth) for i in range(args.httpd_threads)]
+    time.sleep(9e9)
+    log.info("Server Stops - %s:%s", args.host, args.port)
+
+
 if __name__ == '__main__':
 
     # Add file logging if enabled.
@@ -183,12 +239,12 @@ if __name__ == '__main__':
         t.daemon = True
         t.start()
 
-    server = Server
-    httpd = server((args.host, args.port), HTTPHandler)
-    log.info("Server Starts - %s:%s", args.host, args.port)
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    httpd.server_close()
-    log.info("Server Stops - %s:%s", args.host, args.port)
+    # Start authorization thread
+    auth = Auth()
+
+    # Start HTTP server
+    if args.safe_httpd:
+        httpd = ThreadedServer((args.host, args.port), HTTPHandler)
+        launch_httpd(httpd, auth)
+    else:
+        launch_threaded_httpd(HTTPHandler, auth)
