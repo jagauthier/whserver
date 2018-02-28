@@ -147,6 +147,11 @@ def process_stats():
             max_wh_queue = data
 
         stats_queue.task_done()
+
+        wh_q_size = wh_queue.qsize()
+        process_q_size = process_queue.qsize()
+        db_q_size = db_queue.qsize()
+
         # run the stats
         if time.time() - stat_time > args.runtime_statistics * 60:
             stat_time = time.time()
@@ -170,11 +175,11 @@ def process_stats():
                     if auth_stats[token]:
                         log.info("%s: %i", auths[token], auth_stats[token])
 
-            log.info("--- Queue Info (Max) ---")
-            log.info("Process: %i", max_process_queue)
-            log.info("Stats  : %i", max_stat_queue)
-            log.info("DB     : %i", max_db_queue)
-            log.info("WH     : %i", max_wh_queue)
+            log.info("--- Queue Info (Current/Max) ---")
+            log.info("Process: %i (%i)", process_q_size, max_process_queue)
+            log.info("Stats  : %i (%i)", qsize, max_stat_queue)
+            log.info("DB     : %i (%i)", db_q_size, max_db_queue)
+            log.info("WH     : %i (%i)", wh_q_size, max_wh_queue)
 
 
 class ProcessHook():
@@ -493,7 +498,6 @@ class ProcessHook():
             GymMember.gym_id << gymdetails.keys()).execute()
 
         db_queue.put((GymMember, gym_members))
-        time.sleep(1)
 
         if args.webhooks:
             wh_queue.put(('gym_details', wh_gymdetails))
