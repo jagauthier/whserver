@@ -338,7 +338,7 @@ class ProcessHook():
         if 'gym_defenders' in json_data:
             id = json_data['gym_id']
             gym[id] = json_data.copy()
-            gym[id].update({'enabled': True, 'total_cp': 0,
+            gym[id].update({'enabled': True, 
                             'team_id': gym[id]['team'],
                             'gym_id': gym[id]['gym_id'],
                             'last_modified':
@@ -387,7 +387,7 @@ class ProcessHook():
                 trainers[pokemon['owner_name']] = {
                     'name': pokemon['owner_name'],
                     'team': gymdetails[id]['team'],
-                    'level': 0}
+                    'level':pokemon['owner_level'] }
                 p_uid = pokemon['external_id']
 
             if 'deployment_time' not in pokemon:
@@ -690,7 +690,6 @@ def main_process():
                     else:
                         log.warn("Received unhandled webhook type: %s",
                                  data_type)
-                        pprint.pprint(json_data)
                 log.debug("Received %i records.", records)
             else:
                 log.warn("Got an unexpected data type.")

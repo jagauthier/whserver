@@ -46,7 +46,7 @@ class Utf8mb4CharField(CharField):
 def init_database():
     log.info('Connecting to MySQL database on %s:%i...',
              args.db_host, args.db_port)
-    connections = args.db_max_connections
+
     global db
     db = MyRetryDB(
         args.db_name,
@@ -54,8 +54,8 @@ def init_database():
         password=args.db_pass,
         host=args.db_host,
         port=args.db_port,
-        max_connections=connections,
-        stale_timeout=300)
+        max_connections=None,
+        stale_timeout=30)
     return db
 
 
@@ -282,14 +282,6 @@ def db_updater():
     last_notify = time.time()
     while True:
         try:
-
-            while True:
-                try:
-                    db.get_conn()
-                    break
-                except Exception as e:
-                    log.warning('%s... Retrying...', repr(e))
-                    time.sleep(5)
 
             # Loop the queue.
             while True:
@@ -557,11 +549,14 @@ def create_tables(db):
     verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Raid, Versions, Weather]
-    db.get_conn()
-    for table in tables:
-        if not table.table_exists():
-            log.info("Creating table: %s", table.__name__)
-            db.create_tables([table], safe=True)
+
+    with db.execution_context():
+        for table in tables:
+            if not table.table_exists():
+                log.info("Creating table: %s", table.__name__)
+                db.create_tables([table], safe=True)
+            else:
+                log.debug('Skipping table %s, it already exists.', table.__name__)
 
     # fixing encoding on present and future tables
     cmd_sql = '''
@@ -586,20 +581,18 @@ def create_tables(db):
                             COLLATE utf8mb4_unicode_ci;''' % str(table[0])
                 db.execute_sql(cmd_sql)
             db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
-    db.close()
-
 
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Raid, Versions, Weather]
-    db.get_conn()
-    db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
-    for table in tables:
-        if table.table_exists():
-            log.info("Dropping table: %s", table.__name__)
-            db.drop_tables([table], safe=True)
-    db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
-    db.close()
+
+    with db.execution_context():
+        db.execute_sql('SET FOREIGN_KEY_CHECKS=0;')
+        for table in tables:
+            if table.table_exists():
+                log.info("Dropping table: %s", table.__name__)
+                db.drop_tables([table], safe=True)
+        db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
 
 
 def verify_database_schema(db):
