@@ -519,8 +519,7 @@ class ProcessHook():
             try:
                 Gym.get(Gym.id == json_data['gym_id'])
             except:
-                log.info("No Gym found for raid." +
-                         "When the gym is sent it will be okay.")
+                log.info("No Gym found for raid. %s", str(json_data['gym_id']))
 
             id = json_data['raid_seed']
             raid[id] = json_data
