@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import pprint
 import time
+import pprint
 import sys
 from peewee import InsertQuery, FloatField, SmallIntegerField, \
     IntegerField, CharField, DoubleField, BooleanField, \
@@ -556,7 +556,8 @@ def create_tables(db):
                 log.info("Creating table: %s", table.__name__)
                 db.create_tables([table], safe=True)
             else:
-                log.debug('Skipping table %s, it already exists.', table.__name__)
+                log.debug('Skipping table %s, it already exists.',
+                          table.__name__)
 
     # fixing encoding on present and future tables
     cmd_sql = '''
@@ -581,6 +582,7 @@ def create_tables(db):
                             COLLATE utf8mb4_unicode_ci;''' % str(table[0])
                 db.execute_sql(cmd_sql)
             db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
+
 
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,

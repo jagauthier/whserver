@@ -2,7 +2,6 @@ import time
 import random
 import logging
 import yaml
-import pprint
 import s2sphere
 try:
     from yaml import CLoader as Loader
@@ -338,7 +337,7 @@ class ProcessHook():
         if 'gym_defenders' in json_data:
             id = json_data['gym_id']
             gym[id] = json_data.copy()
-            gym[id].update({'enabled': True, 
+            gym[id].update({'enabled': True,
                             'team_id': gym[id]['team'],
                             'gym_id': gym[id]['gym_id'],
                             'last_modified':
@@ -387,7 +386,7 @@ class ProcessHook():
                 trainers[pokemon['owner_name']] = {
                     'name': pokemon['owner_name'],
                     'team': gymdetails[id]['team'],
-                    'level':pokemon['owner_level'] }
+                    'level': pokemon['owner_level']}
                 p_uid = pokemon['external_id']
 
             if 'deployment_time' not in pokemon:
