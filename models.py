@@ -549,6 +549,8 @@ def create_tables(db):
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Raid, Versions, Weather]
 
+    verify_database_schema(db)
+
     with db.execution_context():
         for table in tables:
             if not table.table_exists():
@@ -582,7 +584,7 @@ def create_tables(db):
                 db.execute_sql(cmd_sql)
             db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
 
-    verify_database_schema(db)
+
 
 
 def drop_tables(db):
