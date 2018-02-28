@@ -546,7 +546,6 @@ def bulk_upsert(cls, data, db):
 
 
 def create_tables(db):
-    verify_database_schema(db)
     tables = [Authorizations, Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Raid, Versions, Weather]
 
@@ -582,6 +581,8 @@ def create_tables(db):
                             COLLATE utf8mb4_unicode_ci;''' % str(table[0])
                 db.execute_sql(cmd_sql)
             db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
+
+    verify_database_schema(db)
 
 
 def drop_tables(db):

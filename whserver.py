@@ -180,7 +180,8 @@ def launch_threaded_httpd(handler, auth):
     sock.listen(5)
     log.info("Launching HTTP server - %s:%s", args.host, args.port)
     [ThreadHTTP(i, sock, handler, auth) for i in range(args.httpd_threads)]
-    time.sleep(9e9)
+    while (1):
+        time.sleep(1000)
     log.info("Server Stops - %s:%s", args.host, args.port)
 
 

@@ -3,6 +3,7 @@ import random
 import logging
 import yaml
 import s2sphere
+# import pprint
 try:
     from yaml import CLoader as Loader
 except ImportError:
@@ -238,7 +239,7 @@ class ProcessHook():
 
         # copy this for webhook forwarding
         wh_poke = pokemon[enc].copy()
-
+#        pprint.pprint(pokemon[enc])
         # pgscout/monocle hack for level/cpm
         if "level" in pokemon[enc] and pokemon[enc]['level'] is not None:
             log.denug("Got a level: %i. CPM: %f",
@@ -260,6 +261,11 @@ class ProcessHook():
             pokemon[enc].update({'cp': None})
         if "cp_multiplier" not in pokemon[enc]:
             pokemon[enc].update({'cp_multiplier': None})
+
+        # for monkey
+        if 'boosted_weather' in pokemon[enc]:
+            pokemon[enc]['weather_boosted_condition'] = (
+                pokemon[enc]['boosted_weather'])
 
         # need to change this from an epoch style type to
         # datetime.dateime for the database insert
@@ -585,7 +591,7 @@ class ProcessHook():
             # Map all the fields
             weather[id]['severity'] = json_data['alert_severity']
             weather[id]['last_updated'] = time.gmtime(
-                                          json_data['time_changed'])
+                json_data['time_changed'])
             weather[id]['warn_weather'] = json_data['warn']
             # Day =1 night = 2
             weather[id]['world_time'] = json_data['day']
