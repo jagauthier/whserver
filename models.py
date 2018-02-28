@@ -585,8 +585,6 @@ def create_tables(db):
             db.execute_sql('SET FOREIGN_KEY_CHECKS=1;')
 
 
-
-
 def drop_tables(db):
     tables = [Pokemon, Pokestop, Gym, GymDetails, GymMember,
               GymPokemon, Trainer, Raid, Versions, Weather]
