@@ -451,12 +451,14 @@ class ProcessHook():
 
         gymdetails = {}
 
-        # this is rocketmap, and the gym is still base64
         if monkey is False:
             id = json_data['id']
             gymdetails[id] = json_data
             # copy this for webhook forwarding
             wh_gymdetails = gymdetails[id].copy()
+            # the wh sends "id", the but the database
+            # wants gym_id
+            gymdetails[id].update({'gym_id': gymdetails[id]['id']})
 
         if monkey is True:
             id = json_data['gym_id']
@@ -471,10 +473,9 @@ class ProcessHook():
             if gymdetails[id]['name'] is None:
                 gymdetails[id].update({'name': "None"})
 
-        # the wh sends "id", the but the database
-        # wants gym_id
-        if monkey is False:
-            gymdetails[id].update({'gym_id': gymdetails[id]['id']})
+        # DB needs something not NULL
+        if json_data['url'] is None:
+            gymdetails[id]['url'] = "http://notgiven.com"
 
         # we need to extract trainer and pokemon information before
         # getting gymdetails ready for the database
