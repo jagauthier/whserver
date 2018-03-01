@@ -3,7 +3,7 @@ import random
 import logging
 import yaml
 import s2sphere
-import uuid
+
 # import pprint
 try:
     from yaml import CLoader as Loader
@@ -654,8 +654,8 @@ def main_process():
         try:
             json_data = yaml.load(data_string, Loader=Loader)
         except:
-            filename = uuid.uuid4().hex + ".txt"
-            with open(filename, "w") as text_file:
+            filename = "yaml_error.txt"
+            with open(filename, "a") as text_file:
                 text_file.write(data_string)
             log.info("YAML had a parsing error. See %s for data.", filename)
             continue
