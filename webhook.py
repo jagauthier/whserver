@@ -233,7 +233,8 @@ def __get_key_fields(whtype):
         'pokemon': ['spawnpoint_id', 'pokemon_id', 'latitude', 'longitude',
                     'disappear_time', 'move_1', 'move_2',
                     'individual_stamina', 'individual_defense',
-                    'individual_attack', 'form', 'cp', 'pokemon_level'],
+                    'individual_attack', 'form', 'cp', 'pokemon_level',
+                    'weather_boosted_condition'],
         'gym': [
             'team_id', 'guard_pokemon_id', 'enabled', 'latitude', 'longitude',
             'raid_active_until', 'occupied_since_ms', 'total_cp',
