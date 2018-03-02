@@ -4,7 +4,7 @@
 import logging
 import time
 import pprint
-import sys
+
 from peewee import InsertQuery, FloatField, SmallIntegerField, \
     IntegerField, CharField, DoubleField, BooleanField, \
     DateTimeField, TextField, Model, BigIntegerField
@@ -25,7 +25,7 @@ args = get_args()
 # Jan 04, 2018
 # Changed to 21 without any changes. RM just made changes to the
 # WorkerStatus and MainWorker
-db_schema_version = 26
+db_schema_version = 27
 
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
@@ -125,6 +125,7 @@ class Gym(BaseModel):
     guard_pokemon_id = SmallIntegerField()
     slots_available = SmallIntegerField()
     enabled = BooleanField()
+    park = BooleanField(default=False)
     latitude = DoubleField()
     longitude = DoubleField()
     total_cp = SmallIntegerField()
@@ -607,57 +608,32 @@ def verify_database_schema(db):
     else:
         db_ver = Versions.get(Versions.key == 'schema_version').val
 
-        if db_ver < db_schema_version:
-            database_migrate(db, db_ver)
+        database_migrate(db, db_ver)
 
-        elif db_ver > db_schema_version:
-            log.error('Your database version (%i) appears to be newer than '
-                      'the code supports (%i).', db_ver, db_schema_version)
-            sys.exit(1)
+        # elif db_ver > db_schema_version:
+        #     log.error('Your database version (%i) appears to be newer than '
+        #               'the code supports (%i).', db_ver, db_schema_version)
+        #     sys.exit(1)
+
+# Going to try to do something a little different.
+# Instead of using versioning, we're just going to check for specific
+# columns, and add them as needed.
+
+# we'll retain versions for major updates
 
 
 def database_migrate(db, old_ver):
     # Update database schema version.
-    Versions.update(val=db_schema_version).where(
-        Versions.key == 'schema_version').execute()
 
-    log.info('Detected database version %i, updating to %i...',
-             old_ver, db_schema_version)
+    if db_schema_version > old_ver:
+        Versions.update(val=db_schema_version).where(
+            Versions.key == 'schema_version').execute()
+
+        log.info('Detected database version %i, updating to %i...',
+                 old_ver, db_schema_version)
 
     # Perform migrations here.
     migrator = MySQLMigrator(db)
-
-    if old_ver < 17:
-        migrate(
-            migrator.add_column('pokemon', 'form',
-                                SmallIntegerField(null=True)))
-    if old_ver < 18:
-        migrate(
-            migrator.add_column('pokemon', 'cp',
-                                SmallIntegerField(null=True)))
-    if old_ver < 19:
-        migrate(
-            migrator.add_column('pokemon', 'cp_multiplier',
-                                FloatField(null=True)))
-    if old_ver < 20:
-        migrate(
-            migrator.drop_column('gym', 'gym_points'),
-            migrator.add_column('gym', 'slots_available',
-                                SmallIntegerField(null=False, default=0)),
-            migrator.add_column('gymmember', 'cp_decayed',
-                                SmallIntegerField(null=False, default=0)),
-            migrator.add_column('gymmember', 'deployment_time',
-                                DateTimeField(
-                                    null=False, default=datetime.utcnow())),
-            migrator.add_column('gym', 'total_cp',
-                                SmallIntegerField(null=False, default=0)))
-
-    # RM DB 21 removes base64. We don't already have it, but RM does.
-    # So it was not needed.
-
-    # RM DB 22 altered spawnpoints. We don't use those
-
-    # RM DB 23 changes workstatus and mainworker. We don't care.
 
     if old_ver < 24:
         migrate(
@@ -665,22 +641,91 @@ def database_migrate(db, old_ver):
             migrator.add_index('pokemon',
                                ('disappear_time', 'pokemon_id'), False)
         )
-    if old_ver < 25:
-        migrate(
-            # Add `costume` column to `pokemon`
-            migrator.add_column('pokemon', 'costume',
-                                SmallIntegerField(null=True)),
-            # Add `form` column to `gympokemon`
-            migrator.add_column('gympokemon', 'form',
-                                SmallIntegerField(null=True)),
-            # Add `costume` column to `gympokemon`
-            migrator.add_column('gympokemon', 'costume',
-                                SmallIntegerField(null=True)))
-    if old_ver < 26:
-        migrate(
-            migrator.add_column('pokemon', 'weather_boosted_condition',
-                                SmallIntegerField(null=True))
-        )
-        # Add shiny column to gympokemon
-        migrate(migrator.add_column('gympokemon', 'shiny',
-                                    SmallIntegerField(null=True)))
+
+    table_updates = [
+        # Old ver 17
+        ('add_column', 'pokemon', 'form', SmallIntegerField(null=True)),
+        # Old ver 18
+        ('add_column', 'pokemon', 'cp', SmallIntegerField(null=True)),
+        # old ver 19
+        ('add_column', 'pokemon', 'cp_multiplier', FloatField(null=True)),
+        # old ver 20
+        ('drop_column', 'gym', 'gym_points', None),
+        ('add_column', 'gym', 'slots_available',
+         SmallIntegerField(null=False, default=0)),
+        ('add_column', 'gymmember', 'cp_decayed',
+         SmallIntegerField(null=False, default=0)),
+        ('add_column', 'gymmember', 'deployment_time',
+         DateTimeField(
+             null=False, default=datetime.utcnow())),
+        ('add_column', 'gym', 'total_cp',
+         SmallIntegerField(null=False, default=0)),
+        # old version 24
+        ('drop_index', 'pokemon', 'disappear_time', None),
+        ('add_index', 'pokemon', ('disappear_time', 'pokemon_id'), False),
+        # newer stuff
+        ('add_column', 'pokemon', 'costume', SmallIntegerField(null=True)),
+        ('add_column', 'gympokemon', 'form', SmallIntegerField(null=True)),
+        ('add_column', 'gympokemon', 'costume', SmallIntegerField(null=True)),
+        ('add_column', 'gympokemon', 'shiny', SmallIntegerField(null=True)),
+        ('add_column', 'pokemon', 'weather_boosted_condition',
+         SmallIntegerField(null=True)),
+        ('add_column', 'gym', 'park', BooleanField(default=False)),
+    ]
+
+    for change in table_updates:
+        (action, table, data, ctype) = change
+        if action == 'add_column':
+            if not column_exists(db, table, data):
+                log.info("Adding '%s' column to '%s'.", data, table)
+                migrate(migrator.add_column(table, data, ctype))
+
+        if action == 'drop_column':
+            if column_exists(db, table, data):
+                log.info("Dropping '%s' column from '%s'.", data, table)
+                migrate(migrator.drop_column(table, data))
+
+        if action == 'add_index':
+            index = index_exists(db, table, data)
+            if not index:
+                log.info("Adding '%s' index to '%s'.", data, table)
+                migrate(migrator.add_index(table, data, ctype))
+
+        if action == 'drop_index':
+            if index_name_exists(db, table, data):
+                log.info("Dropping '%s' index from '%s'.", data, table)
+                migrate(migrator.drop_index(table, data))
+
+
+def column_exists(db, table, name):
+    columns = db.get_columns(table)
+    for column in columns:
+        # it exists
+        if column[0] == name:
+            return True
+    return False
+
+# For adding an index, we need to check the index columns
+
+
+def index_exists(db, table, index_cols):
+    # convert to sets and compare
+    idx = set(index_cols)
+    indexes = db.get_indexes(table)
+    for index in indexes:
+        table_idx = set(index[2])
+        # it exists
+        if idx == table_idx:
+            return index[0]
+    return None
+
+# for deleting an index, we need to check the index name
+
+
+def index_name_exists(db, table, index_name):
+    indexes = db.get_indexes(table)
+    for index in indexes:
+        # it exists
+        if index_name == index[0]:
+            return True
+    return None
