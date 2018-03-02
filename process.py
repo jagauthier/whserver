@@ -3,8 +3,10 @@ import random
 import logging
 import yaml
 import s2sphere
-
+import traceback
 # import pprint
+
+# CLoader is choking on unicode
 try:
     from yaml import CLoader as Loader
 except ImportError:
@@ -93,6 +95,14 @@ class Auth():
         return True
 
 
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
 def process_stats():
     start_time = time.time()
     stat_time = start_time
@@ -109,6 +119,7 @@ def process_stats():
     max_db_queue = 0
     max_wh_queue = 0
     max_process_queue = 0
+    bytes = 0
 
     while (True):
             # we're just going to block here until we get data
@@ -147,6 +158,9 @@ def process_stats():
         if stat == "wh_queue_max":
             max_wh_queue = data
 
+        if stat == "bytes":
+            bytes = data
+
         stats_queue.task_done()
 
         wh_q_size = wh_queue.qsize()
@@ -159,6 +173,7 @@ def process_stats():
             log.info("--- Runtime Statistics ---")
             log.info("Success/Fails: [%i,%i]", post_success,
                      post_fails)
+            log.info("Bytes Received: %s", sizeof_fmt(bytes))
             log.info("Pokemon: %i", pokemon_total)
             log.info("Pokestops %i", pokestop_total)
             log.info("Gyms: %i", gym_total)
@@ -525,7 +540,9 @@ class ProcessHook():
             try:
                 Gym.get(Gym.id == json_data['gym_id'])
             except:
-                log.info("No Gym found for raid. %s", str(json_data['gym_id']))
+                exceptiondata = traceback.format_exc().splitlines()
+                log.info("No Gym found for raid. %s (%s)",
+                         str(json_data['gym_id']), exceptiondata[-1])
 
             id = json_data['raid_seed']
             raid[id] = json_data
@@ -645,6 +662,7 @@ def main_process():
 
     PH = ProcessHook()
     max_queue_size = 0
+    bytes = 0
     while (True):
         data_string = process_queue.get()
         start = timeit.default_timer()
@@ -653,16 +671,24 @@ def main_process():
         # data to solve this atm.
         try:
             json_data = yaml.load(data_string, Loader=Loader)
+        except yaml.scanner.ScannerError:
+            # try with the regular loader
+            try:
+                json_data = yaml.load(data_string)
+            except:
+                exceptiondata = traceback.format_exc().splitlines()
+                log.info("YAML processing error: '%s', ", exceptiondata[-1])
+                continue
         except:
-            filename = "yaml_error.txt"
-            with open(filename, "a") as text_file:
-                text_file.write(data_string)
-            log.info("YAML had a parsing error. See %s for data.", filename)
+            exceptiondata = traceback.format_exc().splitlines()
+            log.info("YAML processing error: '%s', ", exceptiondata[-1])
             continue
 
         elapsed = timeit.default_timer() - start
         log.debug("YAML loaded in %.2fs.", elapsed)
         process_queue.task_done()
+        bytes += len(data_string)
+        stats_queue.put(("bytes", bytes))
 
         if process_queue.qsize() > max_queue_size:
             max_queue_size = process_queue.qsize()
