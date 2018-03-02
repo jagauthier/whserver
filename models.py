@@ -96,7 +96,9 @@ class Pokemon(BaseModel):
         null=True, index=True, default=datetime.utcnow)
 
     class Meta:
-        indexes = ((('latitude', 'longitude'), False),)
+        indexes = ((('latitude', 'longitude'), False),
+                   (('disappear_time', 'pokemon_id'), False)
+                   )
 
 
 class Pokestop(BaseModel):

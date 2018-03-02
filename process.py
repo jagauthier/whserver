@@ -263,7 +263,7 @@ class ProcessHook():
 #        pprint.pprint(pokemon[enc])
         # pgscout/monocle hack for level/cpm
         if "level" in pokemon[enc] and pokemon[enc]['level'] is not None:
-            log.denug("Got a level: %i. CPM: %f",
+            log.debug("Got a level: %i. CPM: %f",
                       pokemon[enc]['level'], cpm[pokemon[enc]['level']])
             pokemon[enc].update({'cp_multiplier': cpm[pokemon[enc]['level']]})
 
@@ -537,13 +537,6 @@ class ProcessHook():
         # and I just had to switch the checks around
         # Looks like he also changed the raid dictionary objects
         if 'base64_gym_id' in json_data:
-            try:
-                Gym.get(Gym.id == json_data['gym_id'])
-            except:
-                exceptiondata = traceback.format_exc().splitlines()
-                log.info("No Gym found for raid. %s (%s)",
-                         str(json_data['gym_id']), exceptiondata[-1])
-
             id = json_data['raid_seed']
             raid[id] = json_data
             wh_raid = raid[id].copy()
