@@ -353,7 +353,7 @@ class ProcessHook():
 
         to_keep = ["gym_id", "team_id", "guard_pokemon_id",
                    "slots_available", "enabled", "latitude", "longitude",
-                   "total_cp", "last_modified"]
+                   "total_cp", "park", "last_modified"]
 
         gym = {}
         # copy this for webhook forwarding
