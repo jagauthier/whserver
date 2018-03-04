@@ -48,6 +48,11 @@ cpm = ({1: 0.094, 1.5: 0.135137432, 2: 0.16639787, 2.5: 0.192650919,
         39: 0.78463697, 39.5: 0.787473578, 40: 0.79030001})
 
 
+# This is used to store raid information to then put into gyms when
+# The wh arrives.  It's not the best way to do it. But it is a way.
+global_gyms = {}
+
+
 class Auth():
     authorizations = {}
     auth_stats = {}
@@ -283,7 +288,7 @@ class ProcessHook():
         if "cp_multiplier" not in pokemon[enc]:
             pokemon[enc].update({'cp_multiplier': None})
 
-        # for monkey
+        # for mon alt
         if 'boosted_weather' in pokemon[enc]:
             pokemon[enc]['weather_boosted_condition'] = (
                 pokemon[enc]['boosted_weather'])
@@ -346,6 +351,7 @@ class ProcessHook():
             wh_queue.put(('pokestop', wh_pokestop))
 
     def process_gym(self, json_data):
+        global global_gyms
         # Increase the # of gyms received, even if it's not stored
         self.gym_total += 1
         if args.no_gyms:
@@ -359,7 +365,7 @@ class ProcessHook():
         # copy this for webhook forwarding
         wh_gym = json_data.copy()
 
-        # This is for monkey's fork, which is almost like RM
+        # This is for mon alt's fork, which is almost like RM
         # But has this field, which can be used to identify it.
         if 'gym_defenders' in json_data:
             id = json_data['gym_id']
@@ -370,10 +376,12 @@ class ProcessHook():
                             'last_modified':
                                 time.gmtime(gym[id]['last_modified'])})
             # now send the whole json data to the details.
-            if gym[id]['park'] is None:
-                 gym[id]['park'] = False
-            else:
-                 gym[id]['park'] = True
+
+            if id in global_gyms:
+                if global_gyms[id]['park'] == 'None':
+                    gym[id]['park'] = False
+                else:
+                    gym[id]['park'] = True
             self.process_gym_details(json_data)
         else:
             id = json_data['gym_id']
@@ -524,6 +532,7 @@ class ProcessHook():
             wh_queue.put(('gym_details', wh_gymdetails))
 
     def process_raid(self, json_data):
+        global global_gyms
         # Increase the # of pokestops received, even if it's not stored
         self.raid_total += 1
 
@@ -535,9 +544,9 @@ class ProcessHook():
 
         raid = {}
 
-        # This is for monkey's fork. It's almost RM, but not quite.
+        # This is for mon alt's fork. It's almost RM, but not quite.
         # 02/25/18
-        # Monkey added gym_id AND base64_gym_id,so this was breaking
+        # Mon alt added gym_id AND base64_gym_id,so this was breaking
         # and I just had to switch the checks around
         # Looks like he also changed the raid dictionary objects
         if 'base64_gym_id' in json_data:
@@ -557,6 +566,11 @@ class ProcessHook():
                                  'pokemon_id': None,
                                  'move_1': None,
                                  'move_2': None})
+
+            if id in global_gyms:
+                del global_gyms[id]
+
+            global_gyms[raid[id]['gym_id']] = raid[id]
 
         # And this is stock RM
         elif 'gym_id' in json_data:
@@ -599,7 +613,7 @@ class ProcessHook():
 
         weather = {}
 
-        # This is for monkey's fork. It's almost RM, but not quite.
+        # This is for mon alt's fork. It's almost RM, but not quite.
         # As if this writing, RM doesn't have support for weather
         # 02/28/18
         if 'coords' in json_data:
@@ -617,7 +631,7 @@ class ProcessHook():
             # condition
             weather[id]['gameplay_weather'] = json_data['condition']
 
-            # Monkey sends the coordinates, but we do not actually need them.
+            # Mon alt sends the coordinates, but we do not actually need them.
             cell_id = s2sphere.CellId(long(id))
             cell = s2sphere.Cell(cell_id)
             center = s2sphere.LatLng.from_point(cell.get_center())
