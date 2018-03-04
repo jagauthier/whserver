@@ -370,6 +370,10 @@ class ProcessHook():
                             'last_modified':
                                 time.gmtime(gym[id]['last_modified'])})
             # now send the whole json data to the details.
+            if gym[id]['park'] is None:
+                 gym[id]['park'] = False
+            else:
+                 gym[id]['park'] = True
             self.process_gym_details(json_data)
         else:
             id = json_data['gym_id']
