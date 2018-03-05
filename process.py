@@ -378,10 +378,12 @@ class ProcessHook():
             # now send the whole json data to the details.
 
             if id in global_gyms:
-                if global_gyms[id]['park'] == 'None':
+                if (global_gyms[id]['park'] == 'None' or
+                        global_gyms[id]['park'] is None):
                     gym[id]['park'] = False
                 else:
                     gym[id]['park'] = True
+
             self.process_gym_details(json_data)
         else:
             id = json_data['gym_id']
@@ -566,9 +568,6 @@ class ProcessHook():
                                  'pokemon_id': None,
                                  'move_1': None,
                                  'move_2': None})
-
-            if id in global_gyms:
-                del global_gyms[id]
 
             global_gyms[raid[id]['gym_id']] = raid[id]
 
