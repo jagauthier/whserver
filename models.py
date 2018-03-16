@@ -128,6 +128,7 @@ class Gym(BaseModel):
     slots_available = SmallIntegerField()
     enabled = BooleanField()
     park = BooleanField(default=False)
+    sponsor = SmallIntegerField(null=True)
     latitude = DoubleField()
     longitude = DoubleField()
     total_cp = SmallIntegerField()
@@ -673,6 +674,8 @@ def database_migrate(db, old_ver):
         ('add_column', 'pokemon', 'weather_boosted_condition',
          SmallIntegerField(null=True)),
         ('add_column', 'gym', 'park', BooleanField(default=False)),
+
+        ('add_column', 'gym', 'sponsor', SmallIntegerField(null=True)),
     ]
 
     for change in table_updates:
